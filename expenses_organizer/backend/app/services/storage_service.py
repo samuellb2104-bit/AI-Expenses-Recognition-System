@@ -51,3 +51,64 @@ def upload_to_supabase_storage(filename: str, content: bytes, content_type: str 
         raise StorageError(f"Supabase Storage connection failed: {exc.reason}") from exc
 
     return object_name
+
+
+def download_from_supabase_storage(object_name: str) -> bytes:
+    if not settings.supabase_url or not settings.supabase_service_role_key:
+        raise StorageError("Supabase Storage is not configured.")
+
+    download_url = (
+        f"{settings.supabase_url.rstrip('/')}/storage/v1/object/"
+        f"{settings.supabase_storage_bucket}/{object_name}"
+    )
+    headers = {
+        "Authorization": f"Bearer {settings.supabase_service_role_key}",
+        "apikey": settings.supabase_service_role_key,
+    }
+    req = request.Request(download_url, headers=headers, method="GET")
+    try:
+        with request.urlopen(req) as resp:
+            return resp.read()
+    except error.HTTPError as exc:
+        raise StorageError(f"Supabase Storage download failed: {exc.read().decode('utf-8', errors='ignore')}") from exc
+    except error.URLError as exc:
+        raise StorageError(f"Supabase Storage connection failed: {exc.reason}") from exc
+
+
+def read_file_bytes(storage_path: str) -> bytes:
+    prefix = f"s3://{settings.supabase_storage_bucket}/"
+    if storage_path.startswith(prefix):
+        object_name = storage_path[len(prefix):]
+        return download_from_supabase_storage(object_name)
+    return Path(storage_path).read_bytes()
+
+
+def delete_from_supabase_storage(object_name: str) -> None:
+    if not settings.supabase_url or not settings.supabase_service_role_key:
+        raise StorageError("Supabase Storage is not configured.")
+
+    delete_url = (
+        f"{settings.supabase_url.rstrip('/')}/storage/v1/object/"
+        f"{settings.supabase_storage_bucket}/{object_name}"
+    )
+    headers = {
+        "Authorization": f"Bearer {settings.supabase_service_role_key}",
+        "apikey": settings.supabase_service_role_key,
+    }
+    req = request.Request(delete_url, headers=headers, method="DELETE")
+    try:
+        with request.urlopen(req):
+            pass
+    except error.HTTPError as exc:
+        raise StorageError(f"Supabase Storage delete failed: {exc.read().decode('utf-8', errors='ignore')}") from exc
+    except error.URLError as exc:
+        raise StorageError(f"Supabase Storage connection failed: {exc.reason}") from exc
+
+
+def delete_file(storage_path: str) -> None:
+    prefix = f"s3://{settings.supabase_storage_bucket}/"
+    if storage_path.startswith(prefix):
+        object_name = storage_path[len(prefix):]
+        delete_from_supabase_storage(object_name)
+        return
+    Path(storage_path).unlink(missing_ok=True)
