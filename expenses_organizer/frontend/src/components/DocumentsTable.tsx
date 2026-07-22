@@ -8,6 +8,7 @@ import {
   listDocuments,
   listExpenseCategories,
   listVendors,
+  processDocument,
 } from "../api/client";
 import type { DocumentListItem, ExpenseCategoryRead, VendorRead } from "../api/types";
 
@@ -18,6 +19,16 @@ const STATUS_LABELS: Record<string, string> = {
   ai_extraction_completed: "Procesado (IA)",
   needs_review: "Revisar",
 };
+
+// Any status other than a completed AI extraction means the pipeline never finished
+// successfully (stuck upload, transient OCR/Claude error) -- offer a retry for those.
+const RETRYABLE_STATUSES = new Set(["uploaded", "ocr_failed", "ocr_completed", "needs_review"]);
+
+function formatAmount(totalAmount: number | null, currency: string | null): string {
+  if (totalAmount == null) return "-";
+  const formatted = totalAmount.toLocaleString("es-CO", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  return currency ? `${currency} ${formatted}` : formatted;
+}
 
 interface DocumentsTableProps {
   refreshSignal: number;
@@ -32,6 +43,7 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
   const [newVendorName, setNewVendorName] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -79,6 +91,19 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
     await createExpenseCategory(newCategoryName.trim());
     setNewCategoryName("");
     await loadAll();
+  }
+
+  async function handleRetry(doc: DocumentListItem) {
+    setRetryingId(doc.id);
+    setError(null);
+    try {
+      await processDocument(doc.id);
+      await loadAll();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No se pudo reprocesar el documento.");
+    } finally {
+      setRetryingId(null);
+    }
   }
 
   async function handleDelete(doc: DocumentListItem) {
@@ -138,6 +163,7 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
               <th>Archivo</th>
               <th>Estado</th>
               <th>Confianza OCR</th>
+              <th>Valor</th>
               <th>Proveedor</th>
               <th>Categoria</th>
               <th></th>
@@ -153,6 +179,7 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
                   </span>
                 </td>
                 <td>{doc.confidence_score != null ? `${doc.confidence_score.toFixed(0)}%` : "-"}</td>
+                <td>{formatAmount(doc.total_amount, doc.currency)}</td>
                 <td>
                   <select
                     value={doc.vendor_id ?? ""}
@@ -179,7 +206,16 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
                     ))}
                   </select>
                 </td>
-                <td>
+                <td className="row-actions">
+                  {RETRYABLE_STATUSES.has(doc.status) && (
+                    <button
+                      className="retry-button"
+                      onClick={() => handleRetry(doc)}
+                      disabled={retryingId === doc.id}
+                    >
+                      {retryingId === doc.id ? "Procesando..." : "Reintentar"}
+                    </button>
+                  )}
                   <button
                     className="delete-button"
                     onClick={() => handleDelete(doc)}

@@ -7,9 +7,10 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.document import Document
+from app.models.document_extraction import DocumentExtraction
 from app.models.document_file import DocumentFile
 from app.models.processing_log import ProcessingLog
-from app.schemas.document import DocumentUploadResponse
+from app.schemas.document import DocumentListItem, DocumentUploadResponse
 from app.services.storage_service import (
     StorageError,
     delete_file,
@@ -110,13 +111,39 @@ async def create_uploaded_document(
     )
 
 
+def _final_extraction(db: Session, document_id: UUID) -> DocumentExtraction | None:
+    return (
+        db.query(DocumentExtraction)
+        .filter(DocumentExtraction.document_id == document_id, DocumentExtraction.is_final.is_(True))
+        .order_by(DocumentExtraction.created_at.desc())
+        .first()
+    )
+
+
+def _to_list_item(db: Session, document: Document) -> DocumentListItem:
+    extraction = _final_extraction(db, document.id)
+    extracted_data = extraction.extracted_data if extraction else {}
+    return DocumentListItem(
+        id=document.id,
+        original_filename=document.original_filename,
+        status=document.status,
+        document_type=document.document_type,
+        vendor_id=document.vendor_id,
+        expense_category_id=document.expense_category_id,
+        confidence_score=document.confidence_score,
+        total_amount=extracted_data.get("total_amount"),
+        currency=extracted_data.get("currency"),
+        created_at=document.created_at,
+    )
+
+
 def classify_document(
     db: Session,
     document_id: UUID,
     company_id: UUID,
     vendor_id: UUID | None = None,
     expense_category_id: UUID | None = None,
-) -> Document:
+) -> DocumentListItem:
     document = db.get(Document, document_id)
     if document is None or document.company_id != company_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
@@ -128,7 +155,7 @@ def classify_document(
 
     db.commit()
     db.refresh(document)
-    return document
+    return _to_list_item(db, document)
 
 
 def delete_document(db: Session, document_id: UUID, company_id: UUID) -> None:
@@ -152,10 +179,48 @@ def list_documents(
     company_id: UUID,
     vendor_id: UUID | None = None,
     expense_category_id: UUID | None = None,
-) -> list[Document]:
+) -> list[DocumentListItem]:
     query = db.query(Document).filter(Document.company_id == company_id)
     if vendor_id is not None:
         query = query.filter(Document.vendor_id == vendor_id)
     if expense_category_id is not None:
         query = query.filter(Document.expense_category_id == expense_category_id)
-    return query.order_by(Document.created_at.desc()).all()
+    documents = query.order_by(Document.created_at.desc()).all()
+
+    # Final (is_final=True) extraction per document holds the Claude-extracted total_amount/
+    # currency shown in the table; ordering ascending and overwriting keeps the most recent
+    # one if a document was ever re-extracted.
+    document_ids = [document.id for document in documents]
+    latest_final_by_document: dict[UUID, DocumentExtraction] = {}
+    if document_ids:
+        extractions = (
+            db.query(DocumentExtraction)
+            .filter(
+                DocumentExtraction.document_id.in_(document_ids),
+                DocumentExtraction.is_final.is_(True),
+            )
+            .order_by(DocumentExtraction.created_at.asc())
+            .all()
+        )
+        for extraction in extractions:
+            latest_final_by_document[extraction.document_id] = extraction
+
+    items = []
+    for document in documents:
+        extraction = latest_final_by_document.get(document.id)
+        extracted_data = extraction.extracted_data if extraction else {}
+        items.append(
+            DocumentListItem(
+                id=document.id,
+                original_filename=document.original_filename,
+                status=document.status,
+                document_type=document.document_type,
+                vendor_id=document.vendor_id,
+                expense_category_id=document.expense_category_id,
+                confidence_score=document.confidence_score,
+                total_amount=extracted_data.get("total_amount"),
+                currency=extracted_data.get("currency"),
+                created_at=document.created_at,
+            )
+        )
+    return items

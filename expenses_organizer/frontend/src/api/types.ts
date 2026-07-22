@@ -14,6 +14,8 @@ export interface DocumentListItem {
   vendor_id: string | null;
   expense_category_id: string | null;
   confidence_score: number | null;
+  total_amount: number | null;
+  currency: string | null;
   created_at: string;
 }
 

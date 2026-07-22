@@ -54,6 +54,8 @@ class DocumentListItem(BaseModel):
     vendor_id: UUID | None
     expense_category_id: UUID | None
     confidence_score: float | None
+    total_amount: float | None
+    currency: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}

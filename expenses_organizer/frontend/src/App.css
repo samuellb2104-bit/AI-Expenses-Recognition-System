@@ -283,6 +283,11 @@ section {
   opacity: 1;
 }
 
+.row-actions {
+  display: flex;
+  gap: 6px;
+}
+
 .delete-button {
   background: none;
   border: 1px solid var(--danger);
@@ -296,6 +301,23 @@ section {
 }
 
 .delete-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.retry-button {
+  background: none;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+.retry-button:hover {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.retry-button:disabled {
   opacity: 0.6;
   cursor: wait;
 }
