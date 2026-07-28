@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import uuid4
 from urllib import error, request
+from urllib.parse import quote
 
 from app.core.config import settings
 
@@ -32,7 +33,7 @@ def upload_to_supabase_storage(filename: str, content: bytes, content_type: str 
     object_name = _build_object_name(filename)
     upload_url = (
         f"{settings.supabase_url.rstrip('/')}/storage/v1/object/"
-        f"{settings.supabase_storage_bucket}/{object_name}"
+        f"{settings.supabase_storage_bucket}/{quote(object_name, safe='')}"
     )
     headers = {
         "Authorization": f"Bearer {settings.supabase_service_role_key}",
@@ -59,7 +60,7 @@ def download_from_supabase_storage(object_name: str) -> bytes:
 
     download_url = (
         f"{settings.supabase_url.rstrip('/')}/storage/v1/object/"
-        f"{settings.supabase_storage_bucket}/{object_name}"
+        f"{settings.supabase_storage_bucket}/{quote(object_name, safe='')}"
     )
     headers = {
         "Authorization": f"Bearer {settings.supabase_service_role_key}",
@@ -89,7 +90,7 @@ def delete_from_supabase_storage(object_name: str) -> None:
 
     delete_url = (
         f"{settings.supabase_url.rstrip('/')}/storage/v1/object/"
-        f"{settings.supabase_storage_bucket}/{object_name}"
+        f"{settings.supabase_storage_bucket}/{quote(object_name, safe='')}"
     )
     headers = {
         "Authorization": f"Bearer {settings.supabase_service_role_key}",
