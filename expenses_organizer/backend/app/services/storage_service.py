@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import unicodedata
 from pathlib import Path
 from uuid import uuid4
 from urllib import error, request
@@ -12,8 +14,19 @@ class StorageError(RuntimeError):
     pass
 
 
+def _sanitize_for_storage_key(filename: str) -> str:
+    """Supabase Storage rejects keys with accents or symbols like '#'/'&' as
+    InvalidKey (spaces are fine). Transliterate accents (e.g. 'Ñandú' -> 'Nandu')
+    and drop anything else outside a safe set so uploads never fail on filename
+    alone -- the original, unsanitized filename is still kept in the document
+    record and shown to the user."""
+    normalized = unicodedata.normalize("NFKD", filename)
+    ascii_only = normalized.encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^A-Za-z0-9 ._()-]", "_", ascii_only) or "document"
+
+
 def _build_object_name(filename: str) -> str:
-    safe_name = Path(filename).name or "document"
+    safe_name = _sanitize_for_storage_key(Path(filename).name or "document")
     return f"{uuid4()}_{safe_name}"
 
 
