@@ -14,6 +14,7 @@ import type { DocumentListItem, ExpenseCategoryRead, VendorRead } from "../api/t
 
 const STATUS_LABELS: Record<string, string> = {
   uploaded: "Subido",
+  processing: "Procesando...",
   ocr_failed: "OCR fallo",
   ocr_completed: "Procesado (OCR)",
   ai_extraction_completed: "Procesado (IA)",
@@ -22,6 +23,8 @@ const STATUS_LABELS: Record<string, string> = {
 
 // Any status other than a completed AI extraction means the pipeline never finished
 // successfully (stuck upload, transient OCR/Claude error) -- offer a retry for those.
+// "processing" is excluded: the backend auto-resume already has it claimed, so a manual
+// retry here would just race it.
 const RETRYABLE_STATUSES = new Set(["uploaded", "ocr_failed", "ocr_completed", "needs_review"]);
 
 function formatAmount(totalAmount: number | null, currency: string | null): string {

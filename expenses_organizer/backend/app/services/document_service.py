@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, UploadFile, status
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -17,6 +19,8 @@ from app.services.storage_service import (
     store_file_locally,
     upload_to_supabase_storage,
 )
+
+STALE_UPLOAD_THRESHOLD = timedelta(minutes=2)
 
 
 ALLOWED_MIME_TYPES = {
@@ -172,6 +176,41 @@ def delete_document(db: Session, document_id: UUID, company_id: UUID) -> None:
 
     db.delete(document)
     db.commit()
+
+
+def list_stale_uploaded_document_ids(
+    db: Session,
+    company_id: UUID,
+    older_than: timedelta = STALE_UPLOAD_THRESHOLD,
+) -> list[UUID]:
+    """Finds documents stuck in 'uploaded' past the normal upload->OCR handoff window --
+    e.g. the browser tab closed/lost connection between the upload call and the follow-up
+    processing call. Used to auto-resume them instead of relying on someone noticing the
+    stuck status and clicking retry."""
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - older_than
+    rows = (
+        db.query(Document.id)
+        .filter(
+            Document.company_id == company_id,
+            Document.status == "uploaded",
+            Document.created_at < cutoff,
+        )
+        .all()
+    )
+    return [row.id for row in rows]
+
+
+def try_claim_document_for_processing(db: Session, document_id: UUID) -> bool:
+    """Atomically flips a document from 'uploaded' to 'processing' so concurrent sweeps
+    (e.g. multiple open tabs refreshing the document list) don't both trigger OCR/AI
+    extraction for the same document at once."""
+    result = db.execute(
+        update(Document)
+        .where(Document.id == document_id, Document.status == "uploaded")
+        .values(status="processing")
+    )
+    db.commit()
+    return result.rowcount == 1
 
 
 def list_documents(
