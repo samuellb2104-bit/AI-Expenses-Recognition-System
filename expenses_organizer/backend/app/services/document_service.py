@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, UploadFile, status
-from sqlalchemy import update
+from sqlalchemy import and_, or_, update
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -21,6 +21,11 @@ from app.services.storage_service import (
 )
 
 STALE_UPLOAD_THRESHOLD = timedelta(minutes=2)
+# Longer than STALE_UPLOAD_THRESHOLD: a genuinely in-flight OCR/AI pass normally finishes
+# in well under a minute (see processing_log timings), so this only fires when the
+# background task that claimed the document died mid-flight (e.g. a redeploy/restart)
+# and never got to update the status at all.
+STALE_PROCESSING_THRESHOLD = timedelta(minutes=5)
 
 
 ALLOWED_MIME_TYPES = {
@@ -178,22 +183,34 @@ def delete_document(db: Session, document_id: UUID, company_id: UUID) -> None:
     db.commit()
 
 
-def list_stale_uploaded_document_ids(
+def list_resumable_document_ids(
     db: Session,
     company_id: UUID,
-    older_than: timedelta = STALE_UPLOAD_THRESHOLD,
+    uploaded_older_than: timedelta = STALE_UPLOAD_THRESHOLD,
+    processing_older_than: timedelta = STALE_PROCESSING_THRESHOLD,
 ) -> list[UUID]:
-    """Finds documents stuck in 'uploaded' past the normal upload->OCR handoff window --
-    e.g. the browser tab closed/lost connection between the upload call and the follow-up
-    processing call. Used to auto-resume them instead of relying on someone noticing the
-    stuck status and clicking retry."""
-    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - older_than
+    """Finds documents that need to be (re)kicked into OCR/AI extraction:
+
+    - stuck in 'uploaded' past the normal upload->OCR handoff window (e.g. the browser
+      tab closed/lost connection between the upload call and the follow-up processing
+      call), or
+    - stuck in 'processing' well past how long that step normally takes -- meaning the
+      background task that claimed it died mid-flight (worker restart/redeploy) before
+      ever finishing or recording a failure.
+
+    Used to auto-resume them instead of relying on someone noticing the stuck status and
+    clicking retry."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    uploaded_cutoff = now - uploaded_older_than
+    processing_cutoff = now - processing_older_than
     rows = (
         db.query(Document.id)
         .filter(
             Document.company_id == company_id,
-            Document.status == "uploaded",
-            Document.created_at < cutoff,
+            or_(
+                and_(Document.status == "uploaded", Document.created_at < uploaded_cutoff),
+                and_(Document.status == "processing", Document.updated_at < processing_cutoff),
+            ),
         )
         .all()
     )
@@ -201,12 +218,14 @@ def list_stale_uploaded_document_ids(
 
 
 def try_claim_document_for_processing(db: Session, document_id: UUID) -> bool:
-    """Atomically flips a document from 'uploaded' to 'processing' so concurrent sweeps
-    (e.g. multiple open tabs refreshing the document list) don't both trigger OCR/AI
-    extraction for the same document at once."""
+    """Atomically flips a document to 'processing' from either 'uploaded' or a
+    stale 'processing' (see list_resumable_document_ids) so concurrent sweeps (e.g.
+    multiple open tabs refreshing the document list) don't both trigger OCR/AI
+    extraction for the same document at once. The update also bumps updated_at,
+    resetting the staleness clock for this new attempt."""
     result = db.execute(
         update(Document)
-        .where(Document.id == document_id, Document.status == "uploaded")
+        .where(Document.id == document_id, Document.status.in_(["uploaded", "processing"]))
         .values(status="processing")
     )
     db.commit()

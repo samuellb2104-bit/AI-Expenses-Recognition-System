@@ -18,7 +18,7 @@ from app.services.document_service import (
     create_uploaded_document,
     delete_document,
     list_documents,
-    list_stale_uploaded_document_ids,
+    list_resumable_document_ids,
     try_claim_document_for_processing,
 )
 
@@ -53,10 +53,11 @@ def get_documents(
     by proveedor/categoria.
 
     Also opportunistically resumes any documents stuck in 'uploaded' (e.g. the browser
-    closed/lost connection between the upload call and the follow-up OCR call) since the
-    frontend refreshes this list constantly -- so orphaned uploads self-heal without
-    anyone needing to notice and click retry."""
-    for stale_id in list_stale_uploaded_document_ids(db=db, company_id=auth.company_id):
+    closed/lost connection between the upload call and the follow-up OCR call), or stuck
+    in 'processing' because a previous resume attempt died mid-flight, since the frontend
+    refreshes this list constantly -- so orphaned uploads self-heal without anyone needing
+    to notice and click retry."""
+    for stale_id in list_resumable_document_ids(db=db, company_id=auth.company_id):
         background_tasks.add_task(_resume_stale_document, stale_id, auth.company_id)
 
     return list_documents(
