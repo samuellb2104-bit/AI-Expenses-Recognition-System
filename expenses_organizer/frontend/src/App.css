@@ -278,7 +278,8 @@ section {
 }
 
 .upload-item-uploading .upload-item-message,
-.upload-item-processing .upload-item-message {
+.upload-item-processing .upload-item-message,
+.upload-item-batched .upload-item-message {
   color: var(--accent);
   opacity: 1;
 }

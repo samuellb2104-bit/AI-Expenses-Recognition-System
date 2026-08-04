@@ -232,6 +232,55 @@ def try_claim_document_for_processing(db: Session, document_id: UUID) -> bool:
     return result.rowcount == 1
 
 
+def try_claim_batch_result_for_ingestion(
+    db: Session, document_id: UUID, batch_id: str, company_id: UUID
+) -> bool:
+    """Atomically flips a single document out of 'batch_queued' before writing its
+    batch result, scoped to both batch_id and company_id so a concurrent poll sweep
+    (multiple open tabs, or overlapping background sweeps) can't double-ingest the
+    same result, and so a result can never be written onto another company's
+    document even though Anthropic's batch itself has no notion of company."""
+    result = db.execute(
+        update(Document)
+        .where(
+            Document.id == document_id,
+            Document.batch_id == batch_id,
+            Document.company_id == company_id,
+            Document.status == "batch_queued",
+        )
+        .values(status="processing")
+    )
+    db.commit()
+    return result.rowcount == 1
+
+
+def list_outstanding_batch_ids(db: Session, company_id: UUID) -> list[str]:
+    """Distinct Anthropic batch ids this company still has documents queued
+    against, used to poll each outstanding batch for completion."""
+    rows = (
+        db.query(Document.batch_id)
+        .filter(Document.company_id == company_id, Document.status == "batch_queued")
+        .distinct()
+        .all()
+    )
+    return [row.batch_id for row in rows if row.batch_id is not None]
+
+
+def list_document_ids_for_batch(db: Session, batch_id: str, company_id: UUID) -> list[UUID]:
+    """Documents still queued against a given batch -- used only to resolve a
+    batch that expired (24h) before Anthropic finished processing it."""
+    rows = (
+        db.query(Document.id)
+        .filter(
+            Document.company_id == company_id,
+            Document.batch_id == batch_id,
+            Document.status == "batch_queued",
+        )
+        .all()
+    )
+    return [row.id for row in rows]
+
+
 def list_documents(
     db: Session,
     company_id: UUID,

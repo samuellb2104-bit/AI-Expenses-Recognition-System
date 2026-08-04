@@ -88,40 +88,38 @@ def _document_content_block(content: bytes, mime_type: str | None) -> dict:
     }
 
 
-def extract_with_claude(content: bytes, mime_type: str | None) -> dict:
+def _client() -> anthropic.Anthropic:
     if not settings.anthropic_api_key:
         raise AIExtractionError("ANTHROPIC_API_KEY is not configured.")
+    return anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
-    try:
-        response = client.messages.create(
-            model=settings.anthropic_model,
-            max_tokens=2048,
-            output_config={"format": {"type": "json_schema", "schema": INVOICE_EXTRACTION_SCHEMA}},
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        _document_content_block(content, mime_type),
-                        {"type": "text", "text": EXTRACTION_PROMPT},
-                    ],
-                }
-            ],
-        )
-    except anthropic.RateLimitError as exc:
-        raise AIExtractionError("Claude API rate limit exceeded.") from exc
-    except anthropic.APIConnectionError as exc:
-        raise AIExtractionError(f"Could not reach the Claude API: {exc}") from exc
-    except anthropic.APIStatusError as exc:
-        raise AIExtractionError(f"Claude API error ({exc.status_code}): {exc.message}") from exc
+def _message_params(content: bytes, mime_type: str | None) -> dict:
+    return {
+        "model": settings.anthropic_model,
+        "max_tokens": 2048,
+        "output_config": {"format": {"type": "json_schema", "schema": INVOICE_EXTRACTION_SCHEMA}},
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    _document_content_block(content, mime_type),
+                    {"type": "text", "text": EXTRACTION_PROMPT},
+                ],
+            }
+        ],
+    }
 
-    if response.stop_reason == "refusal":
+
+def _extract_ai_data(message) -> dict:
+    """Parses a Claude Message response (from either a live messages.create() call
+    or a succeeded Message Batch result) into the extracted fields dict."""
+    if message.stop_reason == "refusal":
         raise AIExtractionError("Claude declined to process this document.")
-    if response.stop_reason == "max_tokens":
+    if message.stop_reason == "max_tokens":
         raise AIExtractionError("Claude response was truncated before completing extraction.")
 
-    text_block = next((block.text for block in response.content if block.type == "text"), None)
+    text_block = next((block.text for block in message.content if block.type == "text"), None)
     if text_block is None:
         raise AIExtractionError("Claude did not return a text response.")
 
@@ -129,3 +127,83 @@ def extract_with_claude(content: bytes, mime_type: str | None) -> dict:
         return json.loads(text_block)
     except json.JSONDecodeError as exc:
         raise AIExtractionError("Claude response was not valid JSON.") from exc
+
+
+def extract_with_claude(content: bytes, mime_type: str | None) -> dict:
+    client = _client()
+
+    try:
+        response = client.messages.create(**_message_params(content, mime_type))
+    except anthropic.RateLimitError as exc:
+        raise AIExtractionError("Claude API rate limit exceeded.") from exc
+    except anthropic.APIConnectionError as exc:
+        raise AIExtractionError(f"Could not reach the Claude API: {exc}") from exc
+    except anthropic.APIStatusError as exc:
+        raise AIExtractionError(f"Claude API error ({exc.status_code}): {exc.message}") from exc
+
+    return _extract_ai_data(response)
+
+
+def build_batch_request(custom_id: str, content: bytes, mime_type: str | None) -> dict:
+    """Builds one entry of the `requests` list passed to submit_batch. `custom_id`
+    is used to match this request back to its document once results come in --
+    callers should pass str(document.id)."""
+    return {"custom_id": custom_id, "params": _message_params(content, mime_type)}
+
+
+def submit_batch(requests: list[dict]):
+    """Submits a Message Batch covering all given requests in a single Anthropic API
+    call. Returns the created MessageBatch (id, processing_status, expires_at, ...)."""
+    client = _client()
+    try:
+        return client.messages.batches.create(requests=requests)
+    except anthropic.RateLimitError as exc:
+        raise AIExtractionError("Claude API rate limit exceeded.") from exc
+    except anthropic.APIConnectionError as exc:
+        raise AIExtractionError(f"Could not reach the Claude API: {exc}") from exc
+    except anthropic.APIStatusError as exc:
+        raise AIExtractionError(f"Claude API error ({exc.status_code}): {exc.message}") from exc
+
+
+def retrieve_batch(batch_id: str):
+    """Fetches current status of a previously-submitted batch (processing_status,
+    expires_at, request_counts, ...) -- used to poll for completion."""
+    client = _client()
+    try:
+        return client.messages.batches.retrieve(batch_id)
+    except anthropic.RateLimitError as exc:
+        raise AIExtractionError("Claude API rate limit exceeded.") from exc
+    except anthropic.APIConnectionError as exc:
+        raise AIExtractionError(f"Could not reach the Claude API: {exc}") from exc
+    except anthropic.APIStatusError as exc:
+        raise AIExtractionError(f"Claude API error ({exc.status_code}): {exc.message}") from exc
+
+
+def iter_batch_results(batch_id: str):
+    """Yields (custom_id, ai_data, error) for every item in a completed batch.
+    Exactly one of ai_data/error is set. Only valid once the batch's
+    processing_status is 'ended'. Results are not guaranteed to arrive in the
+    order requests were submitted."""
+    client = _client()
+    try:
+        results = client.messages.batches.results(batch_id)
+    except anthropic.RateLimitError as exc:
+        raise AIExtractionError("Claude API rate limit exceeded.") from exc
+    except anthropic.APIConnectionError as exc:
+        raise AIExtractionError(f"Could not reach the Claude API: {exc}") from exc
+    except anthropic.APIStatusError as exc:
+        raise AIExtractionError(f"Claude API error ({exc.status_code}): {exc.message}") from exc
+
+    for item in results:
+        result = item.result
+        if result.type == "succeeded":
+            try:
+                yield item.custom_id, _extract_ai_data(result.message), None
+            except AIExtractionError as exc:
+                yield item.custom_id, None, str(exc)
+        elif result.type == "errored":
+            yield item.custom_id, None, f"Claude batch item errored: {result.error.error.message}"
+        elif result.type == "canceled":
+            yield item.custom_id, None, "Claude batch item was canceled before processing."
+        else:
+            yield item.custom_id, None, "Claude batch item expired before processing."

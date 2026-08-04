@@ -19,6 +19,12 @@ export interface DocumentListItem {
   created_at: string;
 }
 
+export interface DocumentBatchExtractResponse {
+  batch_id: string | null;
+  submitted_document_ids: string[];
+  skipped_document_ids: string[];
+}
+
 export interface DocumentExtractionRead {
   id: string;
   document_id: string;

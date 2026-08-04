@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
   classifyDocument,
@@ -8,13 +8,14 @@ import {
   listDocuments,
   listExpenseCategories,
   listVendors,
-  processDocument,
+  reprocessWithAi,
 } from "../api/client";
 import type { DocumentListItem, ExpenseCategoryRead, VendorRead } from "../api/types";
 
 const STATUS_LABELS: Record<string, string> = {
   uploaded: "Subido",
   processing: "Procesando...",
+  batch_queued: "En lote (IA)...",
   ocr_failed: "OCR fallo",
   ocr_completed: "Procesado (OCR)",
   ai_extraction_completed: "Procesado (IA)",
@@ -23,9 +24,15 @@ const STATUS_LABELS: Record<string, string> = {
 
 // Any status other than a completed AI extraction means the pipeline never finished
 // successfully (stuck upload, transient OCR/Claude error) -- offer a retry for those.
-// "processing" is excluded: the backend auto-resume already has it claimed, so a manual
-// retry here would just race it.
+// "processing" and "batch_queued" are excluded: something else already has the
+// document claimed (backend auto-resume, or an outstanding Anthropic Message Batch),
+// so a manual retry here would just race it.
 const RETRYABLE_STATUSES = new Set(["uploaded", "ocr_failed", "ocr_completed", "needs_review"]);
+
+// How often to re-poll GET /documents while any document is still 'batch_queued' --
+// batch results land minutes later, out-of-band from any user action, so nothing else
+// in this app would ever surface them without a timer.
+const BATCH_POLL_INTERVAL_MS = 20_000;
 
 function formatAmount(totalAmount: number | null, currency: string | null): string {
   if (totalAmount == null) return "-";
@@ -47,6 +54,7 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
   const [newCategoryName, setNewCategoryName] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -60,6 +68,16 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
       setDocuments(docs);
       setVendors(vendorList);
       setCategories(categoryList);
+
+      // A fresh load supersedes any pending poll -- clear it before possibly
+      // scheduling a new one below, so overlapping loads never double-poll.
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current);
+        pollTimeoutRef.current = null;
+      }
+      if (docs.some((doc) => doc.status === "batch_queued")) {
+        pollTimeoutRef.current = setTimeout(() => void loadAll(), BATCH_POLL_INTERVAL_MS);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No se pudieron cargar los documentos.");
     } finally {
@@ -70,6 +88,12 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
   useEffect(() => {
     void loadAll();
   }, [loadAll, refreshSignal]);
+
+  useEffect(() => {
+    return () => {
+      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+    };
+  }, []);
 
   async function handleClassify(documentId: string, field: "vendorId" | "expenseCategoryId", value: string) {
     const current = documents.find((d) => d.id === documentId);
@@ -100,7 +124,7 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
     setRetryingId(doc.id);
     setError(null);
     try {
-      await processDocument(doc.id);
+      await reprocessWithAi(doc.id);
       await loadAll();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No se pudo reprocesar el documento.");

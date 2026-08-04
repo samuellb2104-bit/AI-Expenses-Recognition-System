@@ -1,4 +1,5 @@
 import type {
+  DocumentBatchExtractResponse,
   DocumentExtractionRead,
   DocumentListItem,
   DocumentUploadResponse,
@@ -75,6 +76,16 @@ export async function processDocument(documentId: string): Promise<DocumentExtra
 
 export async function reprocessWithAi(documentId: string): Promise<DocumentExtractionRead> {
   return request<DocumentExtractionRead>(`/documents/${documentId}/ai-extract`, { method: "POST" });
+}
+
+export async function submitBatchExtraction(
+  documentIds: string[],
+): Promise<DocumentBatchExtractResponse> {
+  return request<DocumentBatchExtractResponse>("/documents/batch-extract", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ document_ids: documentIds }),
+  });
 }
 
 export async function listDocuments(filters: {

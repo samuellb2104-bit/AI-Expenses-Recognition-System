@@ -25,5 +25,6 @@ class Document(Base):
     expense_category_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("expense_categories.id", ondelete="SET NULL"), nullable=True)
     page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     confidence_score: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    batch_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now(), onupdate=func.now(), nullable=False)

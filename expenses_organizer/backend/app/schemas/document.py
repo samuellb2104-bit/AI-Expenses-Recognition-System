@@ -46,6 +46,16 @@ class DocumentClassifyRequest(BaseModel):
     expense_category_id: UUID | None = None
 
 
+class DocumentBatchExtractRequest(BaseModel):
+    document_ids: list[UUID]
+
+
+class DocumentBatchExtractResponse(BaseModel):
+    batch_id: str | None
+    submitted_document_ids: list[UUID]
+    skipped_document_ids: list[UUID]
+
+
 class DocumentListItem(BaseModel):
     id: UUID
     original_filename: str

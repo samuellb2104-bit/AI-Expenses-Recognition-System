@@ -1,24 +1,32 @@
 import { useRef, useState } from "react";
-import { ApiError, processDocument, uploadDocument } from "../api/client";
+import { ApiError, reprocessWithAi, submitBatchExtraction, uploadDocument } from "../api/client";
 
-type FileStage = "queued" | "uploading" | "processing" | "done" | "error";
+type FileStage = "queued" | "uploading" | "processing" | "batched" | "done" | "error";
 
 interface UploadItem {
   key: string;
   file: File;
   stage: FileStage;
   message: string | null;
+  documentId?: string;
 }
 
 const STAGE_LABELS: Record<FileStage, string> = {
   queued: "En cola...",
   uploading: "Subiendo...",
-  processing: "Procesando (OCR + IA)...",
+  processing: "Procesando (IA)...",
+  batched: "Enviado en lote -- revisa la tabla",
   done: "Listo",
   error: "Error",
 };
 
 const MAX_CONCURRENT = 3;
+
+// Below this many files, each one is processed synchronously (fast, seconds-scale
+// feedback). At/above it, all files are uploaded and then submitted as a single
+// Anthropic Message Batch (results land minutes later, but avoids running that many
+// concurrent Claude calls against this single-worker backend). Tunable.
+const BATCH_EXTRACTION_THRESHOLD = 10;
 
 interface UploadDocumentProps {
   onProcessed: () => void;
@@ -45,7 +53,10 @@ export function UploadDocument({ onProcessed }: UploadDocumentProps) {
       const uploaded = await uploadDocument(item.file);
       updateItem(item.key, { stage: "processing" });
 
-      const extraction = await processDocument(uploaded.id);
+      // OCR no longer runs as part of the default flow -- Claude alone produces every
+      // field the app depends on, and skipping local Tesseract keeps this fast and
+      // light on the backend. OCR is still reachable manually if ever needed.
+      const extraction = await reprocessWithAi(uploaded.id);
       const vendor = (extraction.extracted_data.vendor_name as string | undefined) ?? "sin proveedor detectado";
       const total = extraction.extracted_data.total_amount;
       updateItem(item.key, {
@@ -59,9 +70,9 @@ export function UploadDocument({ onProcessed }: UploadDocumentProps) {
       });
     } finally {
       // Refresh the documents table after every file (success or failure) rather than
-      // only at batch-end -- with OCR+Claude always running, a single file can take
-      // several seconds, and for folder-sized batches waiting for the whole batch to
-      // settle before anything shows up would feel broken.
+      // only at batch-end -- a single file can take a couple seconds, and for
+      // folder-sized batches waiting for the whole batch to settle before anything
+      // shows up would feel broken.
       onProcessed();
     }
   }
@@ -75,6 +86,50 @@ export function UploadDocument({ onProcessed }: UploadDocumentProps) {
       }
     }
     await Promise.allSettled(Array.from({ length: MAX_CONCURRENT }, () => worker()));
+  }
+
+  async function uploadOnly(item: UploadItem): Promise<string | null> {
+    updateItem(item.key, { stage: "uploading", message: null });
+    try {
+      const uploaded = await uploadDocument(item.file);
+      updateItem(item.key, { stage: "batched", documentId: uploaded.id });
+      onProcessed();
+      return uploaded.id;
+    } catch (error) {
+      updateItem(item.key, {
+        stage: "error",
+        message: error instanceof ApiError ? error.message : "Error inesperado al subir el documento.",
+      });
+      return null;
+    }
+  }
+
+  async function runBatchQueue(newItems: UploadItem[]) {
+    let cursor = 0;
+    const uploadedIds: string[] = [];
+    async function worker() {
+      while (cursor < newItems.length) {
+        const item = newItems[cursor++];
+        const documentId = await uploadOnly(item);
+        if (documentId) uploadedIds.push(documentId);
+      }
+    }
+    await Promise.allSettled(Array.from({ length: MAX_CONCURRENT }, () => worker()));
+
+    if (uploadedIds.length === 0) return;
+
+    try {
+      await submitBatchExtraction(uploadedIds);
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Error inesperado al enviar el lote a procesar.";
+      setItems((prev) =>
+        prev.map((item) =>
+          uploadedIds.includes(item.documentId ?? "") ? { ...item, stage: "error", message } : item,
+        ),
+      );
+    } finally {
+      onProcessed();
+    }
   }
 
   function enqueueFiles(files: File[]) {
@@ -91,7 +146,12 @@ export function UploadDocument({ onProcessed }: UploadDocumentProps) {
       message: null,
     }));
     setItems((prev) => [...prev, ...newItems]);
-    void runQueue(newItems);
+
+    if (newItems.length >= BATCH_EXTRACTION_THRESHOLD) {
+      void runBatchQueue(newItems);
+    } else {
+      void runQueue(newItems);
+    }
   }
 
   async function collectEntries(entry: FileSystemEntry): Promise<File[]> {

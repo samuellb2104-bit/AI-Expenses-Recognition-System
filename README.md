@@ -1,4 +1,20 @@
-# Expenses Organizer
+# Expenses Organizer (AI Expenses Recognition System)
+
+Multi-tenant SaaS where a company drags in invoices/receipts (PDF or photo) and
+Claude extracts vendor, amounts, and date via vision + structured JSON output,
+auto-linking each document to a vendor and letting users organize spend by
+category with summary reports. Scales from a single file to bulk batches of
+50+ documents using Anthropic's Message Batches API instead of processing
+everything synchronously — a deliberate architecture choice made to keep
+per-document latency low without overloading a small single-worker backend.
+
+**Stack:** Python, FastAPI, PostgreSQL (Supabase), SQLAlchemy + Alembic,
+Anthropic Claude API (vision, structured outputs, Message Batches), Tesseract
+OCR, React, TypeScript, Vite, Supabase Auth, Docker, Render + Vercel.
+
+<!-- TODO: short GIF here — drag-and-drop upload -> extraction -> documents table with amounts -->
+
+---
 
 Backend base para la app de gestion de egresos con FastAPI y PostgreSQL.
 
