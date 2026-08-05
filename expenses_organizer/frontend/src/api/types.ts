@@ -16,6 +16,7 @@ export interface DocumentListItem {
   confidence_score: number | null;
   total_amount: number | null;
   currency: string | null;
+  document_date: string | null;
   created_at: string;
 }
 

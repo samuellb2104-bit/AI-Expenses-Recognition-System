@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, UploadFile, status
@@ -142,6 +142,7 @@ def _to_list_item(db: Session, document: Document) -> DocumentListItem:
         confidence_score=document.confidence_score,
         total_amount=extracted_data.get("total_amount"),
         currency=extracted_data.get("currency"),
+        document_date=document.document_date,
         created_at=document.created_at,
     )
 
@@ -286,12 +287,18 @@ def list_documents(
     company_id: UUID,
     vendor_id: UUID | None = None,
     expense_category_id: UUID | None = None,
+    document_date_from: date | None = None,
+    document_date_to: date | None = None,
 ) -> list[DocumentListItem]:
     query = db.query(Document).filter(Document.company_id == company_id)
     if vendor_id is not None:
         query = query.filter(Document.vendor_id == vendor_id)
     if expense_category_id is not None:
         query = query.filter(Document.expense_category_id == expense_category_id)
+    if document_date_from is not None:
+        query = query.filter(Document.document_date >= document_date_from)
+    if document_date_to is not None:
+        query = query.filter(Document.document_date <= document_date_to)
     documents = query.order_by(Document.created_at.desc()).all()
 
     # Final (is_final=True) extraction per document holds the Claude-extracted total_amount/
@@ -327,6 +334,7 @@ def list_documents(
                 confidence_score=document.confidence_score,
                 total_amount=extracted_data.get("total_amount"),
                 currency=extracted_data.get("currency"),
+                document_date=document.document_date,
                 created_at=document.created_at,
             )
         )

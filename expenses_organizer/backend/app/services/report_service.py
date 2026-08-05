@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
 
 from sqlalchemy.orm import Session
 
@@ -10,6 +9,7 @@ from app.models.document_extraction import DocumentExtraction
 from app.models.expense_category import ExpenseCategory
 from app.models.vendor import Vendor
 from app.schemas.report import ExpenseCategoryTotal, ExpenseSummaryResponse, ExpenseSummaryRow, VendorTotal
+from app.services.ai_extraction_service import parse_document_date
 
 UNCATEGORIZED_LABEL = "Sin categoria"
 UNKNOWN_VENDOR_LABEL = "Sin proveedor"
@@ -21,15 +21,6 @@ def _to_float(value) -> float | None:
     try:
         return float(value)
     except (TypeError, ValueError):
-        return None
-
-
-def _to_date(value) -> date | None:
-    if not value or not isinstance(value, str):
-        return None
-    try:
-        return datetime.strptime(value, "%Y-%m-%d").date()
-    except ValueError:
         return None
 
 
@@ -87,7 +78,7 @@ def get_expense_summary(
 
         total_amount = _to_float(data.get("total_amount"))
         tax_amount = _to_float(data.get("tax_amount"))
-        document_date = _to_date(data.get("document_date"))
+        document_date = parse_document_date(data.get("document_date"))
         currency = data.get("currency")
 
         vendor = vendors_by_id.get(document.vendor_id)

@@ -1,3 +1,4 @@
+from datetime import date
 from uuid import uuid4
 
 import pytest
@@ -199,6 +200,40 @@ def test_run_ai_extraction_runs_claude_directly(monkeypatch):
     assert extraction.extracted_data["vendor_name"] == "Tienda X"
     assert document.status == "ai_extraction_completed"
     assert document.vendor_id == fake_vendor.id
+
+
+def test_run_ai_extraction_populates_document_date_from_extraction(monkeypatch):
+    document = _build_document()
+    session = FakeSession(document)
+
+    monkeypatch.setattr(document_processing_service, "read_file_bytes", lambda storage_path: b"fake-bytes")
+    monkeypatch.setattr(
+        document_processing_service,
+        "extract_with_claude",
+        lambda content, mime_type: {"vendor_name": None, "document_date": "2026-07-09", "total_amount": 9900},
+    )
+    monkeypatch.setattr(document_processing_service, "get_or_create_vendor", lambda db, company_id, name, tax_id=None: None)
+
+    document_processing_service.run_ai_extraction(db=session, document_id=document.id, company_id=document.company_id)
+
+    assert document.document_date == date(2026, 7, 9)
+
+
+def test_run_ai_extraction_leaves_document_date_none_when_unparseable(monkeypatch):
+    document = _build_document()
+    session = FakeSession(document)
+
+    monkeypatch.setattr(document_processing_service, "read_file_bytes", lambda storage_path: b"fake-bytes")
+    monkeypatch.setattr(
+        document_processing_service,
+        "extract_with_claude",
+        lambda content, mime_type: {"vendor_name": None, "document_date": "fecha ilegible", "total_amount": 9900},
+    )
+    monkeypatch.setattr(document_processing_service, "get_or_create_vendor", lambda db, company_id, name, tax_id=None: None)
+
+    document_processing_service.run_ai_extraction(db=session, document_id=document.id, company_id=document.company_id)
+
+    assert document.document_date is None
 
 
 def test_run_ai_extraction_raises_502_when_claude_fails(monkeypatch):

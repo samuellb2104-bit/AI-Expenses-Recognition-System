@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -66,6 +66,7 @@ class DocumentListItem(BaseModel):
     confidence_score: float | None
     total_amount: float | None
     currency: str | None
+    document_date: date | None
     created_at: datetime
 
     model_config = {"from_attributes": True}

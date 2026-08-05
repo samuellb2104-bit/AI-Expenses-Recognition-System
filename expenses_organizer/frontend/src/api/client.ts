@@ -91,10 +91,14 @@ export async function submitBatchExtraction(
 export async function listDocuments(filters: {
   vendorId?: string;
   expenseCategoryId?: string;
+  documentDateFrom?: string;
+  documentDateTo?: string;
 } = {}): Promise<DocumentListItem[]> {
   const query = buildQuery({
     vendor_id: filters.vendorId,
     expense_category_id: filters.expenseCategoryId,
+    document_date_from: filters.documentDateFrom,
+    document_date_to: filters.documentDateTo,
   });
   return request<DocumentListItem[]>(`/documents${query}`);
 }

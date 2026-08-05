@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+from datetime import date, datetime
 
 import anthropic
 
@@ -86,6 +87,19 @@ def _document_content_block(content: bytes, mime_type: str | None) -> dict:
         "type": "image",
         "source": {"type": "base64", "media_type": mime_type or "image/jpeg", "data": encoded},
     }
+
+
+def parse_document_date(value) -> date | None:
+    """Parses the `document_date` field Claude extracts ("YYYY-MM-DD if
+    determinable") into a date, or None if missing/malformed -- the single place
+    that knows the extraction schema's date format, reused by both the
+    persistence path and reports."""
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
 
 
 def _client() -> anthropic.Anthropic:

@@ -1,3 +1,4 @@
+from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, UploadFile, status
@@ -69,12 +70,15 @@ def get_documents(
     background_tasks: BackgroundTasks,
     vendor_id: UUID | None = Query(None),
     expense_category_id: UUID | None = Query(None),
+    document_date_from: date | None = Query(None),
+    document_date_to: date | None = Query(None),
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(get_auth_context),
 ):
-    """Lists documents for the caller's company, optionally filtered by vendor and/or
-    expense category -- the endpoint the frontend will use to browse invoices grouped
-    by proveedor/categoria.
+    """Lists documents for the caller's company, optionally filtered by vendor,
+    expense category, and/or the date range of the date extracted from the
+    document itself (document_date, not upload time) -- the endpoint the frontend
+    will use to browse invoices grouped by proveedor/categoria/fecha.
 
     Also opportunistically resumes any documents stuck in 'uploaded' (e.g. the browser
     closed/lost connection between the upload call and the follow-up OCR call), or stuck
@@ -94,6 +98,8 @@ def get_documents(
         company_id=auth.company_id,
         vendor_id=vendor_id,
         expense_category_id=expense_category_id,
+        document_date_from=document_date_from,
+        document_date_to=document_date_to,
     )
 
 

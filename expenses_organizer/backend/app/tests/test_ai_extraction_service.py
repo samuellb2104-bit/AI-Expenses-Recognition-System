@@ -1,7 +1,14 @@
+from datetime import date
+
 import pytest
 
 from app.services import ai_extraction_service
-from app.services.ai_extraction_service import AIExtractionError, build_batch_request, extract_with_claude
+from app.services.ai_extraction_service import (
+    AIExtractionError,
+    build_batch_request,
+    extract_with_claude,
+    parse_document_date,
+)
 
 
 class FakeTextBlock:
@@ -249,3 +256,20 @@ def test_iter_batch_results_maps_all_result_types(monkeypatch):
     assert results[2] == ("doc-err", None, "Claude batch item errored: overloaded_error")
     assert results[3] == ("doc-canceled", None, "Claude batch item was canceled before processing.")
     assert results[4] == ("doc-expired", None, "Claude batch item expired before processing.")
+
+
+def test_parse_document_date_valid():
+    assert parse_document_date("2026-07-09") == date(2026, 7, 9)
+
+
+def test_parse_document_date_none_when_missing():
+    assert parse_document_date(None) is None
+
+
+def test_parse_document_date_none_when_malformed():
+    assert parse_document_date("not a date") is None
+    assert parse_document_date("09/07/2026") is None
+
+
+def test_parse_document_date_none_when_not_a_string():
+    assert parse_document_date(20260709) is None

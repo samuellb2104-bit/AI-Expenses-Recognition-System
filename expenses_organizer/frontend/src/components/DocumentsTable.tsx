@@ -40,6 +40,10 @@ function formatAmount(totalAmount: number | null, currency: string | null): stri
   return currency ? `${currency} ${formatted}` : formatted;
 }
 
+function formatDocumentDate(documentDate: string | null): string {
+  return documentDate ?? "-";
+}
+
 interface DocumentsTableProps {
   refreshSignal: number;
 }
@@ -54,6 +58,8 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
   const [newCategoryName, setNewCategoryName] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [documentDateFrom, setDocumentDateFrom] = useState("");
+  const [documentDateTo, setDocumentDateTo] = useState("");
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadAll = useCallback(async () => {
@@ -61,7 +67,10 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
     setError(null);
     try {
       const [docs, vendorList, categoryList] = await Promise.all([
-        listDocuments(),
+        listDocuments({
+          documentDateFrom: documentDateFrom || undefined,
+          documentDateTo: documentDateTo || undefined,
+        }),
         listVendors(),
         listExpenseCategories(),
       ]);
@@ -83,7 +92,7 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [documentDateFrom, documentDateTo]);
 
   useEffect(() => {
     void loadAll();
@@ -179,6 +188,30 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
           />
           <button onClick={handleAddCategory}>+ Categoria</button>
         </div>
+        <div className="quick-add">
+          <label>
+            Fecha documento desde{" "}
+            <input
+              type="date"
+              value={documentDateFrom}
+              onChange={(e) => setDocumentDateFrom(e.target.value)}
+            />
+          </label>
+          <label>
+            hasta{" "}
+            <input type="date" value={documentDateTo} onChange={(e) => setDocumentDateTo(e.target.value)} />
+          </label>
+          {(documentDateFrom || documentDateTo) && (
+            <button
+              onClick={() => {
+                setDocumentDateFrom("");
+                setDocumentDateTo("");
+              }}
+            >
+              Limpiar
+            </button>
+          )}
+        </div>
       </div>
 
       {documents.length === 0 ? (
@@ -191,6 +224,7 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
               <th>Estado</th>
               <th>Confianza OCR</th>
               <th>Valor</th>
+              <th>Fecha documento</th>
               <th>Proveedor</th>
               <th>Categoria</th>
               <th></th>
@@ -207,6 +241,7 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
                 </td>
                 <td>{doc.confidence_score != null ? `${doc.confidence_score.toFixed(0)}%` : "-"}</td>
                 <td>{formatAmount(doc.total_amount, doc.currency)}</td>
+                <td>{formatDocumentDate(doc.document_date)}</td>
                 <td>
                   <select
                     value={doc.vendor_id ?? ""}

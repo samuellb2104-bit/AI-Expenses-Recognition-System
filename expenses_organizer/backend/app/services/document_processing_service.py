@@ -15,6 +15,7 @@ from app.services.ai_extraction_service import (
     build_batch_request,
     extract_with_claude,
     iter_batch_results,
+    parse_document_date,
     retrieve_batch,
     submit_batch,
 )
@@ -47,6 +48,7 @@ def _persist_ai_extraction(db: Session, document: Document, ai_data: dict) -> Do
     db.add(extraction)
 
     document.status = "ai_extraction_completed"
+    document.document_date = parse_document_date(ai_data.get("document_date"))
 
     vendor_name = ai_data.get("vendor_name")
     if vendor_name:
