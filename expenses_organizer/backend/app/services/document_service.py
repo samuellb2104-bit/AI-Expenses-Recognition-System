@@ -16,6 +16,7 @@ from app.schemas.document import DocumentListItem, DocumentUploadResponse
 from app.services.storage_service import (
     StorageError,
     delete_file,
+    read_file_bytes,
     store_file_locally,
     upload_to_supabase_storage,
 )
@@ -182,6 +183,21 @@ def delete_document(db: Session, document_id: UUID, company_id: UUID) -> None:
 
     db.delete(document)
     db.commit()
+
+
+def get_document_file(db: Session, document_id: UUID, company_id: UUID) -> tuple[bytes, str, str]:
+    """Returns (content, mime_type, filename) for previewing/downloading the
+    original uploaded file -- used by the frontend's document preview."""
+    document = db.get(Document, document_id)
+    if document is None or document.company_id != company_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
+
+    try:
+        content = read_file_bytes(document.storage_path)
+    except StorageError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    return content, document.mime_type or "application/octet-stream", document.original_filename
 
 
 def list_resumable_document_ids(

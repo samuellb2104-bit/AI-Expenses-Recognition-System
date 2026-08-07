@@ -146,3 +146,52 @@ def test_delete_document_still_deletes_record_when_storage_delete_fails(monkeypa
 
     assert session.deleted == [document]
     assert session.committed is True
+
+
+def test_get_document_file_returns_content_and_mime_type(monkeypatch):
+    document = _build_document()
+    session = FakeSession(document)
+
+    monkeypatch.setattr(document_service, "read_file_bytes", lambda storage_path: b"%PDF-1.4 fake content")
+
+    content, mime_type, filename = document_service.get_document_file(
+        db=session, document_id=document.id, company_id=document.company_id
+    )
+
+    assert content == b"%PDF-1.4 fake content"
+    assert mime_type == "application/pdf"
+    assert filename == "invoice.pdf"
+
+
+def test_get_document_file_raises_404_when_document_missing():
+    session = FakeSession()
+
+    with pytest.raises(HTTPException) as exc_info:
+        document_service.get_document_file(db=session, document_id=uuid4(), company_id=uuid4())
+
+    assert exc_info.value.status_code == 404
+
+
+def test_get_document_file_raises_404_when_company_id_does_not_match():
+    document = _build_document()
+    session = FakeSession(document)
+
+    with pytest.raises(HTTPException) as exc_info:
+        document_service.get_document_file(db=session, document_id=document.id, company_id=uuid4())
+
+    assert exc_info.value.status_code == 404
+
+
+def test_get_document_file_raises_502_on_storage_error(monkeypatch):
+    document = _build_document()
+    session = FakeSession(document)
+
+    def _raise_storage_error(storage_path):
+        raise StorageError("Supabase Storage connection failed: timeout")
+
+    monkeypatch.setattr(document_service, "read_file_bytes", _raise_storage_error)
+
+    with pytest.raises(HTTPException) as exc_info:
+        document_service.get_document_file(db=session, document_id=document.id, company_id=document.company_id)
+
+    assert exc_info.value.status_code == 502

@@ -1,7 +1,7 @@
 from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_auth_context
@@ -25,6 +25,7 @@ from app.services.document_service import (
     classify_document,
     create_uploaded_document,
     delete_document,
+    get_document_file,
     list_documents,
     list_outstanding_batch_ids,
     list_resumable_document_ids,
@@ -161,6 +162,19 @@ def process_document_ai_extraction(
     """Forces a Claude extraction pass regardless of OCR confidence. Useful for testing
     or for documents where OCR is known to be unreliable (e.g. handwritten receipts)."""
     return run_ai_extraction(db=db, document_id=document_id, company_id=auth.company_id)
+
+
+@router.get("/{document_id}/file")
+def get_document_file_endpoint(
+    document_id: UUID,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Returns the original uploaded file (PDF/image) so the frontend can preview it
+    -- fetched via authenticated request rather than a public URL, since Supabase
+    Storage objects aren't public."""
+    content, mime_type, _filename = get_document_file(db=db, document_id=document_id, company_id=auth.company_id)
+    return Response(content=content, media_type=mime_type)
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)

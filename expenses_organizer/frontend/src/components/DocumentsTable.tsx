@@ -5,6 +5,7 @@ import {
   createExpenseCategory,
   createVendor,
   deleteDocument,
+  fetchDocumentFile,
   listDocuments,
   listExpenseCategories,
   listVendors,
@@ -60,6 +61,9 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [documentDateFrom, setDocumentDateFrom] = useState("");
   const [documentDateTo, setDocumentDateTo] = useState("");
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ url: string; mimeType: string; filename: string } | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadAll = useCallback(async () => {
@@ -104,6 +108,12 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview.url);
+    };
+  }, [preview]);
+
   async function handleClassify(documentId: string, field: "vendorId" | "expenseCategoryId", value: string) {
     const current = documents.find((d) => d.id === documentId);
     if (!current) return;
@@ -140,6 +150,25 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
     } finally {
       setRetryingId(null);
     }
+  }
+
+  async function handlePreview(doc: DocumentListItem) {
+    setPreviewingId(doc.id);
+    setPreviewError(null);
+    try {
+      const blob = await fetchDocumentFile(doc.id);
+      const url = URL.createObjectURL(blob);
+      setPreview({ url, mimeType: blob.type, filename: doc.original_filename });
+    } catch (err) {
+      setPreviewError(err instanceof ApiError ? err.message : "No se pudo cargar la vista previa.");
+    } finally {
+      setPreviewingId(null);
+    }
+  }
+
+  function closePreview() {
+    if (preview) URL.revokeObjectURL(preview.url);
+    setPreview(null);
   }
 
   async function handleDelete(doc: DocumentListItem) {
@@ -214,6 +243,8 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
         </div>
       </div>
 
+      {previewError && <p className="error-text">{previewError}</p>}
+
       {documents.length === 0 ? (
         <p>Aun no has subido ningun documento.</p>
       ) : (
@@ -233,7 +264,15 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
           <tbody>
             {documents.map((doc) => (
               <tr key={doc.id}>
-                <td>{doc.original_filename}</td>
+                <td>
+                  <button
+                    className="filename-link"
+                    onClick={() => handlePreview(doc)}
+                    disabled={previewingId === doc.id}
+                  >
+                    {previewingId === doc.id ? "Cargando..." : doc.original_filename}
+                  </button>
+                </td>
                 <td>
                   <span className={`status-badge status-${doc.status}`}>
                     {STATUS_LABELS[doc.status] ?? doc.status}
@@ -290,6 +329,22 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
             ))}
           </tbody>
         </table>
+      )}
+
+      {preview && (
+        <div className="preview-overlay" onClick={closePreview}>
+          <div className="preview-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="preview-modal-header">
+              <span>{preview.filename}</span>
+              <button onClick={closePreview}>Cerrar</button>
+            </div>
+            {preview.mimeType.startsWith("image/") ? (
+              <img src={preview.url} alt={preview.filename} className="preview-image" />
+            ) : (
+              <iframe src={preview.url} title={preview.filename} className="preview-pdf" />
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

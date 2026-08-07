@@ -103,6 +103,16 @@ export async function listDocuments(filters: {
   return request<DocumentListItem[]>(`/documents${query}`);
 }
 
+export async function fetchDocumentFile(documentId: string): Promise<Blob> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}/file`, {
+    headers: await authHeaders(),
+  });
+  if (!response.ok) {
+    throw new ApiError(response.status, "No se pudo cargar la vista previa del documento.");
+  }
+  return response.blob();
+}
+
 export async function deleteDocument(documentId: string): Promise<void> {
   return request<void>(`/documents/${documentId}`, { method: "DELETE" });
 }
