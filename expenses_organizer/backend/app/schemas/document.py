@@ -70,3 +70,8 @@ class DocumentListItem(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class DocumentListResponse(BaseModel):
+    items: list[DocumentListItem]
+    total: int

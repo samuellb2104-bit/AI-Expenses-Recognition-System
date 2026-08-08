@@ -102,6 +102,17 @@ def parse_document_date(value) -> date | None:
         return None
 
 
+def parse_amount(value) -> float | None:
+    """Parses a numeric field Claude extracts (total_amount, tax_amount) into a
+    float, or None if missing/malformed."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _client() -> anthropic.Anthropic:
     if not settings.anthropic_api_key:
         raise AIExtractionError("ANTHROPIC_API_KEY is not configured.")

@@ -15,11 +15,13 @@ from app.services.ai_extraction_service import (
     build_batch_request,
     extract_with_claude,
     iter_batch_results,
+    parse_amount,
     parse_document_date,
     retrieve_batch,
     submit_batch,
 )
 from app.services.document_service import (
+    get_last_category_for_vendor,
     list_document_ids_for_batch,
     try_claim_batch_result_for_ingestion,
 )
@@ -49,12 +51,23 @@ def _persist_ai_extraction(db: Session, document: Document, ai_data: dict) -> Do
 
     document.status = "ai_extraction_completed"
     document.document_date = parse_document_date(ai_data.get("document_date"))
+    document.total_amount = parse_amount(ai_data.get("total_amount"))
+    document.currency = ai_data.get("currency")
 
     vendor_name = ai_data.get("vendor_name")
     if vendor_name:
         vendor = get_or_create_vendor(db, company_id=document.company_id, name=vendor_name)
         if vendor is not None:
             document.vendor_id = vendor.id
+            # A document fresh out of extraction never has a category yet, so this
+            # can't clobber a manual classification -- it just saves re-picking the
+            # same category every time a known vendor's next invoice comes in.
+            if document.expense_category_id is None:
+                last_category_id = get_last_category_for_vendor(
+                    db, company_id=document.company_id, vendor_id=vendor.id
+                )
+                if last_category_id is not None:
+                    document.expense_category_id = last_category_id
 
     db.add(
         ProcessingLog(

@@ -446,3 +446,48 @@ section {
   border: none;
   width: 100%;
 }
+
+.pagination-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.pagination-row button {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.pagination-row button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Vendors tab */
+
+.vendors-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.vendors-table th,
+.vendors-table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.vendor-row {
+  cursor: pointer;
+}
+
+.vendor-row:hover {
+  background: var(--surface);
+}

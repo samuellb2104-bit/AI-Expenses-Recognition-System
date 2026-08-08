@@ -12,6 +12,7 @@ from app.schemas.document import (
     DocumentClassifyRequest,
     DocumentExtractionRead,
     DocumentListItem,
+    DocumentListResponse,
     DocumentUploadResponse,
 )
 from app.services.auth_service import AuthContext
@@ -66,20 +67,24 @@ def _poll_batch(batch_id: str, company_id: UUID) -> None:
         db.close()
 
 
-@router.get("", response_model=list[DocumentListItem])
+@router.get("", response_model=DocumentListResponse)
 def get_documents(
     background_tasks: BackgroundTasks,
     vendor_id: UUID | None = Query(None),
     expense_category_id: UUID | None = Query(None),
     document_date_from: date | None = Query(None),
     document_date_to: date | None = Query(None),
+    missing_info: bool = Query(False),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(get_auth_context),
 ):
-    """Lists documents for the caller's company, optionally filtered by vendor,
-    expense category, and/or the date range of the date extracted from the
-    document itself (document_date, not upload time) -- the endpoint the frontend
-    will use to browse invoices grouped by proveedor/categoria/fecha.
+    """Lists documents for the caller's company (paginated), optionally filtered by
+    vendor, expense category, the date range of the date extracted from the
+    document itself (document_date, not upload time), and/or missing_info (any of
+    vendor/category/amount not set yet, for finding documents that need manual
+    review) -- the endpoint the frontend uses to browse invoices.
 
     Also opportunistically resumes any documents stuck in 'uploaded' (e.g. the browser
     closed/lost connection between the upload call and the follow-up OCR call), or stuck
@@ -94,14 +99,18 @@ def get_documents(
     for batch_id in list_outstanding_batch_ids(db=db, company_id=auth.company_id):
         background_tasks.add_task(_poll_batch, batch_id, auth.company_id)
 
-    return list_documents(
+    items, total = list_documents(
         db=db,
         company_id=auth.company_id,
         vendor_id=vendor_id,
         expense_category_id=expense_category_id,
         document_date_from=document_date_from,
         document_date_to=document_date_to,
+        missing_info=missing_info,
+        limit=limit,
+        offset=offset,
     )
+    return DocumentListResponse(items=items, total=total)
 
 
 @router.post("/upload", response_model=DocumentUploadResponse, status_code=status.HTTP_201_CREATED)

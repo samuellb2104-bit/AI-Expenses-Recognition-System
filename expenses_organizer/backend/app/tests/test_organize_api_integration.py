@@ -53,13 +53,13 @@ def test_vendors_categories_and_document_classification_end_to_end():
 
             list_resp = client.get("/documents", params={"vendor_id": vendor_id})
             assert list_resp.status_code == 200
-            assert any(d["id"] == document_id for d in list_resp.json())
+            assert any(d["id"] == document_id for d in list_resp.json()["items"])
 
             list_by_category = client.get(
                 "/documents", params={"expense_category_id": category_id}
             )
             assert list_by_category.status_code == 200
-            assert any(d["id"] == document_id for d in list_by_category.json())
+            assert any(d["id"] == document_id for d in list_by_category.json()["items"])
         finally:
             with SessionLocal() as db:
                 db.query(ProcessingLog).filter(ProcessingLog.document_id == document_id).delete()

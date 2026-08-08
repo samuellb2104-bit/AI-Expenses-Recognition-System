@@ -4,16 +4,18 @@ import { DocumentsTable } from "./components/DocumentsTable";
 import { Login } from "./components/Login";
 import { Reports } from "./components/Reports";
 import { UploadDocument } from "./components/UploadDocument";
+import { VendorsView } from "./components/VendorsView";
 import { supabase } from "./lib/supabaseClient";
 import "./App.css";
 
-type View = "documents" | "reports";
+type View = "documents" | "vendors" | "reports";
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const [refreshSignal, setRefreshSignal] = useState(0);
   const [view, setView] = useState<View>("documents");
+  const [selectedVendorId, setSelectedVendorId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -52,6 +54,9 @@ function App() {
         <button className={view === "documents" ? "active" : ""} onClick={() => setView("documents")}>
           Documentos
         </button>
+        <button className={view === "vendors" ? "active" : ""} onClick={() => setView("vendors")}>
+          Proveedores
+        </button>
         <button className={view === "reports" ? "active" : ""} onClick={() => setView("reports")}>
           Reportes
         </button>
@@ -65,9 +70,22 @@ function App() {
 
           <section>
             <h2>Documentos</h2>
-            <DocumentsTable refreshSignal={refreshSignal} />
+            <DocumentsTable refreshSignal={refreshSignal} presetVendorId={selectedVendorId} />
           </section>
         </>
+      )}
+
+      {view === "vendors" && (
+        <section>
+          <h2>Proveedores</h2>
+          <VendorsView
+            refreshSignal={refreshSignal}
+            onSelectVendor={(vendorId) => {
+              setSelectedVendorId(vendorId);
+              setView("documents");
+            }}
+          />
+        </section>
       )}
 
       {view === "reports" && (

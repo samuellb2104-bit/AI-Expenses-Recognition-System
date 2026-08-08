@@ -20,6 +20,11 @@ export interface DocumentListItem {
   created_at: string;
 }
 
+export interface DocumentListResponse {
+  items: DocumentListItem[];
+  total: number;
+}
+
 export interface DocumentBatchExtractResponse {
   batch_id: string | null;
   submitted_document_ids: string[];
@@ -42,6 +47,7 @@ export interface VendorRead {
   company_id: string;
   name: string;
   tax_id: string | null;
+  document_count: number;
 }
 
 export interface ExpenseCategoryRead {

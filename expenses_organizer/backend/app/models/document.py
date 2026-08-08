@@ -27,5 +27,7 @@ class Document(Base):
     confidence_score: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
     batch_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     document_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    total_amount: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(10), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now(), onupdate=func.now(), nullable=False)

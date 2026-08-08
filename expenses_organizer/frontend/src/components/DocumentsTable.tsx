@@ -35,6 +35,8 @@ const RETRYABLE_STATUSES = new Set(["uploaded", "ocr_failed", "ocr_completed", "
 // in this app would ever surface them without a timer.
 const BATCH_POLL_INTERVAL_MS = 20_000;
 
+const PAGE_SIZE = 50;
+
 function formatAmount(totalAmount: number | null, currency: string | null): string {
   if (totalAmount == null) return "-";
   const formatted = totalAmount.toLocaleString("es-CO", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -47,10 +49,12 @@ function formatDocumentDate(documentDate: string | null): string {
 
 interface DocumentsTableProps {
   refreshSignal: number;
+  presetVendorId?: string;
 }
 
-export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
+export function DocumentsTable({ refreshSignal, presetVendorId }: DocumentsTableProps) {
   const [documents, setDocuments] = useState<DocumentListItem[]>([]);
+  const [total, setTotal] = useState(0);
   const [vendors, setVendors] = useState<VendorRead[]>([]);
   const [categories, setCategories] = useState<ExpenseCategoryRead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,24 +65,44 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [documentDateFrom, setDocumentDateFrom] = useState("");
   const [documentDateTo, setDocumentDateTo] = useState("");
+  const [vendorFilter, setVendorFilter] = useState(presetVendorId ?? "");
+  const [missingInfoOnly, setMissingInfoOnly] = useState(false);
+  const [page, setPage] = useState(0);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ url: string; mimeType: string; filename: string } | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // The Proveedores tab jumps here with a fresh presetVendorId each time a vendor is
+  // clicked -- pick that up even if the table was already mounted on "Documentos".
+  useEffect(() => {
+    setVendorFilter(presetVendorId ?? "");
+  }, [presetVendorId]);
+
+  // Any filter change should snap back to page 0 -- staying on e.g. page 3 of a
+  // narrower result set would just show an empty page.
+  useEffect(() => {
+    setPage(0);
+  }, [documentDateFrom, documentDateTo, vendorFilter, missingInfoOnly]);
+
   const loadAll = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [docs, vendorList, categoryList] = await Promise.all([
+      const [{ items, total: itemsTotal }, vendorList, categoryList] = await Promise.all([
         listDocuments({
           documentDateFrom: documentDateFrom || undefined,
           documentDateTo: documentDateTo || undefined,
+          vendorId: vendorFilter || undefined,
+          missingInfo: missingInfoOnly || undefined,
+          limit: PAGE_SIZE,
+          offset: page * PAGE_SIZE,
         }),
         listVendors(),
         listExpenseCategories(),
       ]);
-      setDocuments(docs);
+      setDocuments(items);
+      setTotal(itemsTotal);
       setVendors(vendorList);
       setCategories(categoryList);
 
@@ -88,7 +112,7 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
         clearTimeout(pollTimeoutRef.current);
         pollTimeoutRef.current = null;
       }
-      if (docs.some((doc) => doc.status === "batch_queued")) {
+      if (items.some((doc) => doc.status === "batch_queued")) {
         pollTimeoutRef.current = setTimeout(() => void loadAll(), BATCH_POLL_INTERVAL_MS);
       }
     } catch (err) {
@@ -96,7 +120,7 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
     } finally {
       setLoading(false);
     }
-  }, [documentDateFrom, documentDateTo]);
+  }, [documentDateFrom, documentDateTo, vendorFilter, missingInfoOnly, page]);
 
   useEffect(() => {
     void loadAll();
@@ -241,12 +265,33 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
             </button>
           )}
         </div>
+        <div className="quick-add">
+          <label>
+            Proveedor{" "}
+            <select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)}>
+              <option value="">-- Todos --</option>
+              {vendors.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={missingInfoOnly}
+              onChange={(e) => setMissingInfoOnly(e.target.checked)}
+            />{" "}
+            Solo sin clasificar
+          </label>
+        </div>
       </div>
 
       {previewError && <p className="error-text">{previewError}</p>}
 
       {documents.length === 0 ? (
-        <p>Aun no has subido ningun documento.</p>
+        <p>No hay documentos que coincidan con los filtros.</p>
       ) : (
         <table className="documents-table">
           <thead>
@@ -329,6 +374,23 @@ export function DocumentsTable({ refreshSignal }: DocumentsTableProps) {
             ))}
           </tbody>
         </table>
+      )}
+
+      {total > 0 && (
+        <div className="pagination-row">
+          <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0 || loading}>
+            Anterior
+          </button>
+          <span>
+            Mostrando {page * PAGE_SIZE + 1}-{Math.min(total, (page + 1) * PAGE_SIZE)} de {total}
+          </span>
+          <button
+            onClick={() => setPage((p) => p + 1)}
+            disabled={(page + 1) * PAGE_SIZE >= total || loading}
+          >
+            Siguiente
+          </button>
+        </div>
       )}
 
       {preview && (

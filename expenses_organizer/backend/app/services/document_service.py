@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.document import Document
-from app.models.document_extraction import DocumentExtraction
 from app.models.document_file import DocumentFile
 from app.models.processing_log import ProcessingLog
 from app.schemas.document import DocumentListItem, DocumentUploadResponse
@@ -121,18 +120,7 @@ async def create_uploaded_document(
     )
 
 
-def _final_extraction(db: Session, document_id: UUID) -> DocumentExtraction | None:
-    return (
-        db.query(DocumentExtraction)
-        .filter(DocumentExtraction.document_id == document_id, DocumentExtraction.is_final.is_(True))
-        .order_by(DocumentExtraction.created_at.desc())
-        .first()
-    )
-
-
 def _to_list_item(db: Session, document: Document) -> DocumentListItem:
-    extraction = _final_extraction(db, document.id)
-    extracted_data = extraction.extracted_data if extraction else {}
     return DocumentListItem(
         id=document.id,
         original_filename=document.original_filename,
@@ -141,8 +129,8 @@ def _to_list_item(db: Session, document: Document) -> DocumentListItem:
         vendor_id=document.vendor_id,
         expense_category_id=document.expense_category_id,
         confidence_score=document.confidence_score,
-        total_amount=extracted_data.get("total_amount"),
-        currency=extracted_data.get("currency"),
+        total_amount=document.total_amount,
+        currency=document.currency,
         document_date=document.document_date,
         created_at=document.created_at,
     )
@@ -298,14 +286,32 @@ def list_document_ids_for_batch(db: Session, batch_id: str, company_id: UUID) ->
     return [row.id for row in rows]
 
 
-def list_documents(
+def get_last_category_for_vendor(db: Session, company_id: UUID, vendor_id: UUID) -> UUID | None:
+    """Most recently touched expense_category_id among this vendor's other
+    documents, if any -- used to default a newly-extracted document's category to
+    whatever this vendor was last categorized as."""
+    document = (
+        db.query(Document)
+        .filter(
+            Document.company_id == company_id,
+            Document.vendor_id == vendor_id,
+            Document.expense_category_id.isnot(None),
+        )
+        .order_by(Document.updated_at.desc())
+        .first()
+    )
+    return document.expense_category_id if document is not None else None
+
+
+def _document_query(
     db: Session,
     company_id: UUID,
     vendor_id: UUID | None = None,
     expense_category_id: UUID | None = None,
     document_date_from: date | None = None,
     document_date_to: date | None = None,
-) -> list[DocumentListItem]:
+    missing_info: bool = False,
+):
     query = db.query(Document).filter(Document.company_id == company_id)
     if vendor_id is not None:
         query = query.filter(Document.vendor_id == vendor_id)
@@ -315,43 +321,48 @@ def list_documents(
         query = query.filter(Document.document_date >= document_date_from)
     if document_date_to is not None:
         query = query.filter(Document.document_date <= document_date_to)
-    documents = query.order_by(Document.created_at.desc()).all()
-
-    # Final (is_final=True) extraction per document holds the Claude-extracted total_amount/
-    # currency shown in the table; ordering ascending and overwriting keeps the most recent
-    # one if a document was ever re-extracted.
-    document_ids = [document.id for document in documents]
-    latest_final_by_document: dict[UUID, DocumentExtraction] = {}
-    if document_ids:
-        extractions = (
-            db.query(DocumentExtraction)
-            .filter(
-                DocumentExtraction.document_id.in_(document_ids),
-                DocumentExtraction.is_final.is_(True),
-            )
-            .order_by(DocumentExtraction.created_at.asc())
-            .all()
-        )
-        for extraction in extractions:
-            latest_final_by_document[extraction.document_id] = extraction
-
-    items = []
-    for document in documents:
-        extraction = latest_final_by_document.get(document.id)
-        extracted_data = extraction.extracted_data if extraction else {}
-        items.append(
-            DocumentListItem(
-                id=document.id,
-                original_filename=document.original_filename,
-                status=document.status,
-                document_type=document.document_type,
-                vendor_id=document.vendor_id,
-                expense_category_id=document.expense_category_id,
-                confidence_score=document.confidence_score,
-                total_amount=extracted_data.get("total_amount"),
-                currency=extracted_data.get("currency"),
-                document_date=document.document_date,
-                created_at=document.created_at,
+    if missing_info:
+        query = query.filter(
+            or_(
+                Document.vendor_id.is_(None),
+                Document.expense_category_id.is_(None),
+                Document.total_amount.is_(None),
             )
         )
-    return items
+    return query
+
+
+def list_documents(
+    db: Session,
+    company_id: UUID,
+    vendor_id: UUID | None = None,
+    expense_category_id: UUID | None = None,
+    document_date_from: date | None = None,
+    document_date_to: date | None = None,
+    missing_info: bool = False,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[DocumentListItem], int]:
+    query = _document_query(
+        db, company_id, vendor_id, expense_category_id, document_date_from, document_date_to, missing_info
+    )
+    total = query.count()
+    documents = query.order_by(Document.created_at.desc()).limit(limit).offset(offset).all()
+
+    items = [
+        DocumentListItem(
+            id=document.id,
+            original_filename=document.original_filename,
+            status=document.status,
+            document_type=document.document_type,
+            vendor_id=document.vendor_id,
+            expense_category_id=document.expense_category_id,
+            confidence_score=document.confidence_score,
+            total_amount=document.total_amount,
+            currency=document.currency,
+            document_date=document.document_date,
+            created_at=document.created_at,
+        )
+        for document in documents
+    ]
+    return items, total

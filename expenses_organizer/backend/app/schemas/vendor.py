@@ -18,5 +18,6 @@ class VendorRead(BaseModel):
     company_id: UUID
     name: str
     tax_id: str | None
+    document_count: int = 0
 
     model_config = {"from_attributes": True}

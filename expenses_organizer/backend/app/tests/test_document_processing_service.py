@@ -72,6 +72,9 @@ def test_run_ocr_extraction_always_runs_ai_extraction_after_ocr(monkeypatch):
         "get_or_create_vendor",
         lambda db, company_id, name, tax_id=None: fake_vendor,
     )
+    monkeypatch.setattr(
+        document_processing_service, "get_last_category_for_vendor", lambda db, company_id, vendor_id: None
+    )
 
     extraction = document_processing_service.run_ocr_extraction(db=session, document_id=document.id, company_id=document.company_id)
 
@@ -193,6 +196,9 @@ def test_run_ai_extraction_runs_claude_directly(monkeypatch):
         "get_or_create_vendor",
         lambda db, company_id, name, tax_id=None: fake_vendor,
     )
+    monkeypatch.setattr(
+        document_processing_service, "get_last_category_for_vendor", lambda db, company_id, vendor_id: None
+    )
 
     extraction = document_processing_service.run_ai_extraction(db=session, document_id=document.id, company_id=document.company_id)
 
@@ -200,6 +206,36 @@ def test_run_ai_extraction_runs_claude_directly(monkeypatch):
     assert extraction.extracted_data["vendor_name"] == "Tienda X"
     assert document.status == "ai_extraction_completed"
     assert document.vendor_id == fake_vendor.id
+    assert document.total_amount == 9900
+    assert document.expense_category_id is None
+
+
+def test_run_ai_extraction_applies_vendors_last_category_when_document_has_none(monkeypatch):
+    document = _build_document()
+    session = FakeSession(document)
+    fake_vendor = FakeVendor()
+    known_category_id = uuid4()
+
+    monkeypatch.setattr(document_processing_service, "read_file_bytes", lambda storage_path: b"fake-bytes")
+    monkeypatch.setattr(
+        document_processing_service,
+        "extract_with_claude",
+        lambda content, mime_type: {"vendor_name": "Tienda X", "total_amount": 9900},
+    )
+    monkeypatch.setattr(
+        document_processing_service,
+        "get_or_create_vendor",
+        lambda db, company_id, name, tax_id=None: fake_vendor,
+    )
+    monkeypatch.setattr(
+        document_processing_service,
+        "get_last_category_for_vendor",
+        lambda db, company_id, vendor_id: known_category_id if vendor_id == fake_vendor.id else None,
+    )
+
+    document_processing_service.run_ai_extraction(db=session, document_id=document.id, company_id=document.company_id)
+
+    assert document.expense_category_id == known_category_id
 
 
 def test_run_ai_extraction_populates_document_date_from_extraction(monkeypatch):

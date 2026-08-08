@@ -6,7 +6,9 @@ from fastapi import HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.models.document import Document
 from app.models.vendor import Vendor
+from app.schemas.vendor import VendorRead
 
 
 def get_or_create_vendor(db: Session, company_id: uuid.UUID, name: str, tax_id: str | None = None) -> Vendor | None:
@@ -33,17 +35,43 @@ def get_or_create_vendor(db: Session, company_id: uuid.UUID, name: str, tax_id: 
     return vendor
 
 
-def list_vendors(db: Session, company_id: uuid.UUID) -> list[Vendor]:
-    return db.query(Vendor).filter(Vendor.company_id == company_id).order_by(Vendor.name).all()
+def _count_documents_for_vendor(db: Session, vendor_id: uuid.UUID) -> int:
+    return db.query(func.count(Document.id)).filter(Document.vendor_id == vendor_id).scalar() or 0
 
 
-def create_vendor(db: Session, company_id: uuid.UUID, name: str, tax_id: str | None = None) -> Vendor:
+def _to_vendor_read(vendor: Vendor, document_count: int) -> VendorRead:
+    return VendorRead(
+        id=vendor.id,
+        company_id=vendor.company_id,
+        name=vendor.name,
+        tax_id=vendor.tax_id,
+        document_count=document_count,
+    )
+
+
+def list_vendors(db: Session, company_id: uuid.UUID) -> list[VendorRead]:
+    """Every vendor for this company plus how many documents reference it --
+    powers the Proveedores tab (sorted by document_count so the vendors with the
+    most files to review show up first) and stays a drop-in replacement for the
+    classification dropdowns, which just ignore the extra field."""
+    rows = (
+        db.query(Vendor, func.count(Document.id))
+        .outerjoin(Document, Document.vendor_id == Vendor.id)
+        .filter(Vendor.company_id == company_id)
+        .group_by(Vendor.id)
+        .order_by(func.count(Document.id).desc(), Vendor.name)
+        .all()
+    )
+    return [_to_vendor_read(vendor, count) for vendor, count in rows]
+
+
+def create_vendor(db: Session, company_id: uuid.UUID, name: str, tax_id: str | None = None) -> VendorRead:
     vendor = get_or_create_vendor(db, company_id=company_id, name=name, tax_id=tax_id)
     if vendor is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Vendor name cannot be empty.")
     db.commit()
     db.refresh(vendor)
-    return vendor
+    return _to_vendor_read(vendor, _count_documents_for_vendor(db, vendor.id))
 
 
 def update_vendor(
@@ -52,7 +80,7 @@ def update_vendor(
     company_id: uuid.UUID,
     name: str | None = None,
     tax_id: str | None = None,
-) -> Vendor:
+) -> VendorRead:
     vendor = db.get(Vendor, vendor_id)
     if vendor is None or vendor.company_id != company_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vendor not found.")
@@ -67,4 +95,4 @@ def update_vendor(
 
     db.commit()
     db.refresh(vendor)
-    return vendor
+    return _to_vendor_read(vendor, _count_documents_for_vendor(db, vendor.id))

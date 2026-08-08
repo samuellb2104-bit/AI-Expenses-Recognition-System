@@ -2,6 +2,7 @@ import type {
   DocumentBatchExtractResponse,
   DocumentExtractionRead,
   DocumentListItem,
+  DocumentListResponse,
   DocumentUploadResponse,
   ExpenseCategoryRead,
   ExpenseSummaryResponse,
@@ -47,10 +48,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-function buildQuery(params: Record<string, string | undefined>): string {
+function buildQuery(params: Record<string, string | number | boolean | undefined>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
-    if (value) search.set(key, value);
+    if (value !== undefined) search.set(key, String(value));
   }
   const query = search.toString();
   return query ? `?${query}` : "";
@@ -93,14 +94,20 @@ export async function listDocuments(filters: {
   expenseCategoryId?: string;
   documentDateFrom?: string;
   documentDateTo?: string;
-} = {}): Promise<DocumentListItem[]> {
+  missingInfo?: boolean;
+  limit?: number;
+  offset?: number;
+} = {}): Promise<DocumentListResponse> {
   const query = buildQuery({
     vendor_id: filters.vendorId,
     expense_category_id: filters.expenseCategoryId,
     document_date_from: filters.documentDateFrom,
     document_date_to: filters.documentDateTo,
+    missing_info: filters.missingInfo,
+    limit: filters.limit,
+    offset: filters.offset,
   });
-  return request<DocumentListItem[]>(`/documents${query}`);
+  return request<DocumentListResponse>(`/documents${query}`);
 }
 
 export async function fetchDocumentFile(documentId: string): Promise<Blob> {

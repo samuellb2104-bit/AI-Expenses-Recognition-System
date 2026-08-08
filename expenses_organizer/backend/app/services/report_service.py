@@ -9,19 +9,10 @@ from app.models.document_extraction import DocumentExtraction
 from app.models.expense_category import ExpenseCategory
 from app.models.vendor import Vendor
 from app.schemas.report import ExpenseCategoryTotal, ExpenseSummaryResponse, ExpenseSummaryRow, VendorTotal
-from app.services.ai_extraction_service import parse_document_date
+from app.services.ai_extraction_service import parse_amount, parse_document_date
 
 UNCATEGORIZED_LABEL = "Sin categoria"
 UNKNOWN_VENDOR_LABEL = "Sin proveedor"
-
-
-def _to_float(value) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
 
 
 def get_expense_summary(
@@ -76,8 +67,8 @@ def get_expense_summary(
         extraction = latest_by_document.get(document.id)
         data = extraction.extracted_data if extraction is not None else {}
 
-        total_amount = _to_float(data.get("total_amount"))
-        tax_amount = _to_float(data.get("tax_amount"))
+        total_amount = parse_amount(data.get("total_amount"))
+        tax_amount = parse_amount(data.get("tax_amount"))
         document_date = parse_document_date(data.get("document_date"))
         currency = data.get("currency")
 
