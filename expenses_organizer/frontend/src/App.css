@@ -491,3 +491,54 @@ section {
 .vendor-row:hover {
   background: var(--surface);
 }
+
+.duplicates-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.duplicate-group {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.duplicate-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.duplicate-reasons {
+  font-size: 0.9em;
+  opacity: 0.8;
+}
+
+.confidence-badge {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.85em;
+  font-weight: 600;
+}
+
+.confidence-alta {
+  background: #fde2e2;
+  color: #a12020;
+}
+
+.confidence-media {
+  background: #fff1d6;
+  color: #8a5a00;
+}
+
+.confidence-baja {
+  background: #e8eef7;
+  color: #3a4f6b;
+}

@@ -82,6 +82,34 @@ export interface VendorTotal {
   document_count: number;
 }
 
+export interface DuplicateDocument {
+  id: string;
+  original_filename: string;
+  document_type: string | null;
+  status: string;
+  vendor_id: string | null;
+  vendor_name: string | null;
+  total_amount: number;
+  currency: string | null;
+  document_date: string | null;
+  created_at: string;
+}
+
+export interface DuplicateGroup {
+  confidence: "alta" | "media" | "baja";
+  reasons: string[];
+  total_amount: number;
+  currency: string | null;
+  possible_overcount: number;
+  documents: DuplicateDocument[];
+}
+
+export interface DuplicateReviewResponse {
+  groups: DuplicateGroup[];
+  scanned_document_count: number;
+  date_window_days: number;
+}
+
 export interface ExpenseSummaryResponse {
   rows: ExpenseSummaryRow[];
   totals_by_category: ExpenseCategoryTotal[];

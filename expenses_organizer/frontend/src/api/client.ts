@@ -4,6 +4,7 @@ import type {
   DocumentListItem,
   DocumentListResponse,
   DocumentUploadResponse,
+  DuplicateReviewResponse,
   ExpenseCategoryRead,
   ExpenseSummaryResponse,
   VendorRead,
@@ -159,6 +160,19 @@ export async function createExpenseCategory(name: string): Promise<ExpenseCatego
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
+  });
+}
+
+export async function getProbableDuplicates(dateWindowDays?: number): Promise<DuplicateReviewResponse> {
+  const query = buildQuery({ date_window_days: dateWindowDays });
+  return request<DuplicateReviewResponse>(`/reports/probable-duplicates${query}`);
+}
+
+export async function dismissDuplicateGroup(documentIds: string[]): Promise<void> {
+  await request<{ dismissed_pairs: number }>("/reports/probable-duplicates/dismiss", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ document_ids: documentIds }),
   });
 }
 

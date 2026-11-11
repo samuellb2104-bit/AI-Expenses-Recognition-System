@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { DocumentsTable } from "./components/DocumentsTable";
+import { DuplicatesView } from "./components/DuplicatesView";
 import { Login } from "./components/Login";
 import { Reports } from "./components/Reports";
 import { UploadDocument } from "./components/UploadDocument";
@@ -8,7 +9,7 @@ import { VendorsView } from "./components/VendorsView";
 import { supabase } from "./lib/supabaseClient";
 import "./App.css";
 
-type View = "documents" | "vendors" | "reports";
+type View = "documents" | "vendors" | "duplicates" | "reports";
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -57,6 +58,9 @@ function App() {
         <button className={view === "vendors" ? "active" : ""} onClick={() => setView("vendors")}>
           Proveedores
         </button>
+        <button className={view === "duplicates" ? "active" : ""} onClick={() => setView("duplicates")}>
+          Duplicados
+        </button>
         <button className={view === "reports" ? "active" : ""} onClick={() => setView("reports")}>
           Reportes
         </button>
@@ -85,6 +89,13 @@ function App() {
               setView("documents");
             }}
           />
+        </section>
+      )}
+
+      {view === "duplicates" && (
+        <section>
+          <h2>Egresos duplicados</h2>
+          <DuplicatesView onChanged={() => setRefreshSignal((n) => n + 1)} />
         </section>
       )}
 
