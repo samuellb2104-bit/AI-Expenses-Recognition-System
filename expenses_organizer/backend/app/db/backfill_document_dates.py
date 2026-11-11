@@ -13,7 +13,7 @@ from sqlalchemy import or_
 from app.db.session import SessionLocal
 from app.models.document import Document
 from app.models.document_extraction import DocumentExtraction
-from app.services.ai_extraction_service import parse_amount, parse_document_date
+from app.services.ai_extraction_service import parse_document_date, resolve_amount
 
 
 def main() -> None:
@@ -49,7 +49,7 @@ def main() -> None:
                     touched = True
 
             if document.total_amount is None:
-                parsed_amount = parse_amount(data.get("total_amount"))
+                parsed_amount = resolve_amount(data, "total_amount")
                 if parsed_amount is not None:
                     document.total_amount = parsed_amount
                     document.currency = data.get("currency")

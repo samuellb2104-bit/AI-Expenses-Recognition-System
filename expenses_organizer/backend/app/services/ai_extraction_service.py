@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 from datetime import date, datetime
 
 import anthropic
@@ -21,13 +22,27 @@ INVOICE_EXTRACTION_SCHEMA = {
             "type": ["string", "null"],
             "description": "Date the invoice/receipt was issued, formatted YYYY-MM-DD if determinable.",
         },
+        "total_amount_text": {
+            "type": ["string", "null"],
+            "description": (
+                "The final total exactly as printed on the document, character by character "
+                "(e.g. '$ 186.900' or '1.234.567,50'), WITHOUT converting or reformatting it."
+            ),
+        },
         "total_amount": {
             "type": ["number", "null"],
-            "description": "Final total amount charged, including tax.",
+            "description": (
+                "Final total amount charged, including tax, as a plain number with no thousands "
+                "separators. Colombian documents use '.' for thousands, so '186.900' is 186900."
+            ),
+        },
+        "tax_amount_text": {
+            "type": ["string", "null"],
+            "description": "The tax amount (e.g. IVA) exactly as printed on the document, without converting it.",
         },
         "tax_amount": {
             "type": ["number", "null"],
-            "description": "Tax amount (e.g. IVA), if broken out separately.",
+            "description": "Tax amount (e.g. IVA), if broken out separately, as a plain number.",
         },
         "currency": {
             "type": ["string", "null"],
@@ -56,7 +71,9 @@ INVOICE_EXTRACTION_SCHEMA = {
     "required": [
         "vendor_name",
         "document_date",
+        "total_amount_text",
         "total_amount",
+        "tax_amount_text",
         "tax_amount",
         "currency",
         "line_items",
@@ -68,7 +85,15 @@ INVOICE_EXTRACTION_SCHEMA = {
 EXTRACTION_PROMPT = (
     "Extract the invoice/receipt fields from this document. "
     "If a field is not present or illegible, use null. "
-    "Use notes for anything ambiguous, such as a value you are not confident about."
+    "Use notes for anything ambiguous, such as a value you are not confident about.\n\n"
+    "Number format: these documents are usually Colombian. They use '.' as the thousands "
+    "separator and ',' as the decimal separator, so '186.900' means one hundred eighty-six "
+    "thousand nine hundred (186900), NOT 186.9, and '1.234.567,50' means 1234567.50. "
+    "Peso (COP) amounts normally have no decimals, so a value under 1000 pesos is very unlikely: "
+    "re-read the digits before answering.\n"
+    "For total_amount_text and tax_amount_text, copy the amount exactly as it is printed on the "
+    "document, character by character (for example '$ 186.900'), without converting it. "
+    "For total_amount and tax_amount, give the plain number without any thousands separator."
 )
 
 
@@ -111,6 +136,66 @@ def parse_amount(value) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+_AMOUNT_NOISE = re.compile(r"[^\d.,]")
+
+
+def parse_amount_text(text) -> float | None:
+    """Parses an amount exactly as printed on a document ("$ 186.900", "1.234.567,50",
+    "186,9") into a float with a fixed, deterministic rule -- so how a number is read
+    never depends on the model silently guessing a locale.
+
+    Rules: if both '.' and ',' appear, the last one is the decimal separator. If only
+    one kind appears, a repeated separator ("1.234.567") is a thousands separator, and a
+    single separator followed by exactly 3 digits ("186.900", "186,900") is also a
+    thousands separator, since money never has 3 decimals. Anything else ("186,9",
+    "186.90") is a decimal. Returns None when no amount can be read."""
+    if not isinstance(text, str):
+        return None
+
+    # Only trailing separators are noise (e.g. "Total: 186.900."); a leading one is
+    # meaningful (".50").
+    cleaned = _AMOUNT_NOISE.sub("", text).rstrip(".,")
+    if not any(ch.isdigit() for ch in cleaned):
+        return None
+
+    has_dot, has_comma = "." in cleaned, "," in cleaned
+    if has_dot and has_comma:
+        decimal_sep = "." if cleaned.rfind(".") > cleaned.rfind(",") else ","
+        thousands_sep = "," if decimal_sep == "." else "."
+        normalized = cleaned.replace(thousands_sep, "").replace(decimal_sep, ".")
+    elif has_dot or has_comma:
+        sep = "." if has_dot else ","
+        parts = cleaned.split(sep)
+        if len(parts) > 2:
+            if not all(len(part) == 3 for part in parts[1:]):
+                return None
+            normalized = "".join(parts)
+        else:
+            integer_part, fraction = parts
+            if len(fraction) == 3 and integer_part not in ("", "0"):
+                normalized = integer_part + fraction
+            else:
+                normalized = f"{integer_part or '0'}.{fraction}"
+    else:
+        normalized = cleaned
+
+    try:
+        return float(normalized)
+    except ValueError:
+        return None
+
+
+def resolve_amount(data: dict, field: str) -> float | None:
+    """The single place that turns an extraction into a numeric amount for `field`
+    ('total_amount' or 'tax_amount'). The text exactly as printed (`<field>_text`)
+    wins when present and readable; the model's own number is the fallback, which is
+    also what extractions saved before the text fields existed rely on."""
+    from_text = parse_amount_text(data.get(f"{field}_text"))
+    if from_text is not None:
+        return from_text
+    return parse_amount(data.get(field))
 
 
 def _client() -> anthropic.Anthropic:

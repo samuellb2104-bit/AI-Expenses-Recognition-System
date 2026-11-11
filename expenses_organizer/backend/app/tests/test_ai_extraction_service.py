@@ -273,3 +273,53 @@ def test_parse_document_date_none_when_malformed():
 
 def test_parse_document_date_none_when_not_a_string():
     assert parse_document_date(20260709) is None
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("186.900", 186900),  # the reported bug: '.' is thousands in Colombia
+        ("$ 186.900", 186900),
+        ("COP 186.900", 186900),
+        ("186,900", 186900),
+        ("1.234.567", 1234567),
+        ("1.234.567,50", 1234567.50),
+        ("1,234,567.50", 1234567.50),
+        ("186.900,00", 186900),
+        ("186,9", 186.9),
+        ("186.90", 186.9),
+        ("12.5", 12.5),
+        ("0,500", 0.5),
+        (".50", 0.5),
+        ("186900", 186900),
+        ("  $1.500  ", 1500),
+    ],
+)
+def test_parse_amount_text_reads_colombian_and_us_formats(text, expected):
+    assert ai_extraction_service.parse_amount_text(text) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("text", [None, "", "   ", "n/a", "$", 186900, "1.23.456"])
+def test_parse_amount_text_returns_none_when_unreadable(text):
+    assert ai_extraction_service.parse_amount_text(text) is None
+
+
+def test_resolve_amount_prefers_printed_text_over_models_number():
+    # Claude returned the misread 186.9 as a number, but the printed text is right.
+    data = {"total_amount": 186.9, "total_amount_text": "$ 186.900"}
+    assert ai_extraction_service.resolve_amount(data, "total_amount") == 186900
+
+
+def test_resolve_amount_falls_back_to_number_when_text_missing_or_unreadable():
+    assert ai_extraction_service.resolve_amount({"total_amount": 9900}, "total_amount") == 9900
+    assert ai_extraction_service.resolve_amount(
+        {"total_amount": 9900, "total_amount_text": "ilegible"}, "total_amount"
+    ) == 9900
+    assert ai_extraction_service.resolve_amount({"tax_amount": None}, "tax_amount") is None
+
+
+def test_extraction_schema_requires_printed_text_fields_and_prompt_explains_format():
+    schema = ai_extraction_service.INVOICE_EXTRACTION_SCHEMA
+    assert {"total_amount_text", "tax_amount_text"} <= set(schema["required"])
+    assert set(schema["required"]) == set(schema["properties"])
+    assert "186.900" in ai_extraction_service.EXTRACTION_PROMPT
