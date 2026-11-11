@@ -67,6 +67,7 @@ export function DocumentsTable({ refreshSignal, presetVendorId }: DocumentsTable
   const [documentDateTo, setDocumentDateTo] = useState("");
   const [vendorFilter, setVendorFilter] = useState(presetVendorId ?? "");
   const [missingInfoOnly, setMissingInfoOnly] = useState(false);
+  const [amountAlertOnly, setAmountAlertOnly] = useState(false);
   const [page, setPage] = useState(0);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ url: string; mimeType: string; filename: string } | null>(null);
@@ -83,7 +84,7 @@ export function DocumentsTable({ refreshSignal, presetVendorId }: DocumentsTable
   // narrower result set would just show an empty page.
   useEffect(() => {
     setPage(0);
-  }, [documentDateFrom, documentDateTo, vendorFilter, missingInfoOnly]);
+  }, [documentDateFrom, documentDateTo, vendorFilter, missingInfoOnly, amountAlertOnly]);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -95,6 +96,7 @@ export function DocumentsTable({ refreshSignal, presetVendorId }: DocumentsTable
           documentDateTo: documentDateTo || undefined,
           vendorId: vendorFilter || undefined,
           missingInfo: missingInfoOnly || undefined,
+          amountAlert: amountAlertOnly || undefined,
           limit: PAGE_SIZE,
           offset: page * PAGE_SIZE,
         }),
@@ -120,7 +122,7 @@ export function DocumentsTable({ refreshSignal, presetVendorId }: DocumentsTable
     } finally {
       setLoading(false);
     }
-  }, [documentDateFrom, documentDateTo, vendorFilter, missingInfoOnly, page]);
+  }, [documentDateFrom, documentDateTo, vendorFilter, missingInfoOnly, amountAlertOnly, page]);
 
   useEffect(() => {
     void loadAll();
@@ -285,6 +287,14 @@ export function DocumentsTable({ refreshSignal, presetVendorId }: DocumentsTable
             />{" "}
             Solo sin clasificar
           </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={amountAlertOnly}
+              onChange={(e) => setAmountAlertOnly(e.target.checked)}
+            />{" "}
+            Solo con alertas de valor
+          </label>
         </div>
       </div>
 
@@ -324,7 +334,19 @@ export function DocumentsTable({ refreshSignal, presetVendorId }: DocumentsTable
                   </span>
                 </td>
                 <td>{doc.confidence_score != null ? `${doc.confidence_score.toFixed(0)}%` : "-"}</td>
-                <td>{formatAmount(doc.total_amount, doc.currency)}</td>
+                <td>
+                  {formatAmount(doc.total_amount, doc.currency)}
+                  {doc.amount_warnings.length > 0 && (
+                    <span
+                      className="amount-warning"
+                      title={doc.amount_warnings.join("\n")}
+                      aria-label={`Alerta de valor: ${doc.amount_warnings.join(" ")}`}
+                    >
+                      {" "}
+                      ⚠
+                    </span>
+                  )}
+                </td>
                 <td>{formatDocumentDate(doc.document_date)}</td>
                 <td>
                   <select

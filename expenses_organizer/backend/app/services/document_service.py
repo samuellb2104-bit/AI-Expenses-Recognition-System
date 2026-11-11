@@ -12,6 +12,7 @@ from app.models.document import Document
 from app.models.document_file import DocumentFile
 from app.models.processing_log import ProcessingLog
 from app.schemas.document import DocumentListItem, DocumentUploadResponse
+from app.services.amount_validation_service import load_amount_warnings
 from app.services.storage_service import (
     StorageError,
     delete_file,
@@ -120,7 +121,11 @@ async def create_uploaded_document(
     )
 
 
-def _to_list_item(db: Session, document: Document) -> DocumentListItem:
+def _to_list_item(
+    db: Session, document: Document, amount_warnings: list[str] | None = None
+) -> DocumentListItem:
+    if amount_warnings is None:
+        amount_warnings = load_amount_warnings(db, [document]).get(document.id, [])
     return DocumentListItem(
         id=document.id,
         original_filename=document.original_filename,
@@ -133,6 +138,7 @@ def _to_list_item(db: Session, document: Document) -> DocumentListItem:
         currency=document.currency,
         document_date=document.document_date,
         created_at=document.created_at,
+        amount_warnings=amount_warnings,
     )
 
 
@@ -340,14 +346,27 @@ def list_documents(
     document_date_from: date | None = None,
     document_date_to: date | None = None,
     missing_info: bool = False,
+    amount_alert: bool = False,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[DocumentListItem], int]:
     query = _document_query(
         db, company_id, vendor_id, expense_category_id, document_date_from, document_date_to, missing_info
     )
-    total = query.count()
-    documents = query.order_by(Document.created_at.desc()).limit(limit).offset(offset).all()
+
+    if amount_alert:
+        # Alerts are computed from the extraction (not a column), so this filter
+        # evaluates every candidate and paginates the flagged ones in Python. Fine at
+        # this scale (a company's documents are in the low thousands at most).
+        candidates = query.filter(Document.total_amount.is_not(None)).order_by(Document.created_at.desc()).all()
+        warnings_by_id = load_amount_warnings(db, candidates)
+        flagged = [d for d in candidates if d.id in warnings_by_id]
+        total = len(flagged)
+        documents = flagged[offset : offset + limit]
+    else:
+        total = query.count()
+        documents = query.order_by(Document.created_at.desc()).limit(limit).offset(offset).all()
+        warnings_by_id = load_amount_warnings(db, documents)
 
     items = [
         DocumentListItem(
@@ -362,6 +381,7 @@ def list_documents(
             currency=document.currency,
             document_date=document.document_date,
             created_at=document.created_at,
+            amount_warnings=warnings_by_id.get(document.id, []),
         )
         for document in documents
     ]

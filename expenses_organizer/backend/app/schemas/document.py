@@ -68,6 +68,9 @@ class DocumentListItem(BaseModel):
     currency: str | None
     document_date: date | None
     created_at: datetime
+    # Plausibility hints about the extracted amount (e.g. "186.900" read as 186,9);
+    # computed on read, empty when nothing looks off.
+    amount_warnings: list[str] = []
 
     model_config = {"from_attributes": True}
 

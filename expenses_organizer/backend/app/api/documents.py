@@ -75,6 +75,7 @@ def get_documents(
     document_date_from: date | None = Query(None),
     document_date_to: date | None = Query(None),
     missing_info: bool = Query(False),
+    amount_alert: bool = Query(False),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
@@ -84,7 +85,8 @@ def get_documents(
     vendor, expense category, the date range of the date extracted from the
     document itself (document_date, not upload time), and/or missing_info (any of
     vendor/category/amount not set yet, for finding documents that need manual
-    review) -- the endpoint the frontend uses to browse invoices.
+    review) and/or amount_alert (only documents whose extracted amount looks
+    implausible, e.g. "186.900" read as 186,9) -- the endpoint the frontend uses to browse invoices.
 
     Also opportunistically resumes any documents stuck in 'uploaded' (e.g. the browser
     closed/lost connection between the upload call and the follow-up OCR call), or stuck
@@ -107,6 +109,7 @@ def get_documents(
         document_date_from=document_date_from,
         document_date_to=document_date_to,
         missing_info=missing_info,
+        amount_alert=amount_alert,
         limit=limit,
         offset=offset,
     )

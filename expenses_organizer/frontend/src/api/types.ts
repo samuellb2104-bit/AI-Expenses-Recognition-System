@@ -18,6 +18,7 @@ export interface DocumentListItem {
   currency: string | null;
   document_date: string | null;
   created_at: string;
+  amount_warnings: string[];
 }
 
 export interface DocumentListResponse {

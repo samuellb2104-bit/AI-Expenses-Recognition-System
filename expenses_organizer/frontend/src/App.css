@@ -542,3 +542,9 @@ section {
   background: #e8eef7;
   color: #3a4f6b;
 }
+
+.amount-warning {
+  color: #b36b00;
+  cursor: help;
+  font-weight: 700;
+}

@@ -96,6 +96,7 @@ export async function listDocuments(filters: {
   documentDateFrom?: string;
   documentDateTo?: string;
   missingInfo?: boolean;
+  amountAlert?: boolean;
   limit?: number;
   offset?: number;
 } = {}): Promise<DocumentListResponse> {
@@ -105,6 +106,7 @@ export async function listDocuments(filters: {
     document_date_from: filters.documentDateFrom,
     document_date_to: filters.documentDateTo,
     missing_info: filters.missingInfo,
+    amount_alert: filters.amountAlert,
     limit: filters.limit,
     offset: filters.offset,
   });
