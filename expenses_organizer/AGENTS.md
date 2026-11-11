@@ -2,13 +2,15 @@
 
 ## Project Structure & Module Organization
 
-The main code lives in `expenses_organizer/backend/`. Keep FastAPI code under `backend/app/`, organized by responsibility: `api/` for routes, `core/` for settings, `db/` for database setup, `models/` for ORM models, `schemas/` for Pydantic schemas, and `services/` for business logic. Add tests in `backend/app/tests/`.
+The backend lives in `expenses_organizer/backend/` and the React + TypeScript + Vite frontend in `expenses_organizer/frontend/`. Keep FastAPI code under `backend/app/`, organized by responsibility: `api/` for routes, `core/` for settings, `db/` for database setup and admin scripts, `models/` for ORM models, `schemas/` for Pydantic schemas, and `services/` for business logic. Add tests in `backend/app/tests/`. Database migrations live in `backend/alembic/versions/`. See the root `README.md` and `CLAUDE.md` for architecture and project status.
 
 ## Build, Test, and Development Commands
 
-- `uvicorn app.main:app --reload` from `expenses_organizer/backend/`: runs the API locally with hot reload.
-- `python -m pytest`: runs tests once they are added.
+- `uvicorn main:app --reload` from `expenses_organizer/backend/`: runs the API locally with hot reload.
+- `python -m pytest` from `expenses_organizer/backend/`: runs the backend test suite.
 - `pip install -r requirements.txt`: installs the Python dependencies.
+- `alembic upgrade head`: applies database migrations.
+- `npm run dev` / `npm run build` / `npm run lint` from `expenses_organizer/frontend/`: run, type-check and build, and lint the frontend.
 
 ## Coding Style & Naming Conventions
 
