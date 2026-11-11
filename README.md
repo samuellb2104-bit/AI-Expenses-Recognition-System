@@ -23,6 +23,7 @@ Render + Vercel.
 - **Tabla de documentos**: filtros por proveedor, categoría, rango de fechas del documento y "información faltante"; paginación; previsualización del archivo; reintento de procesamiento fallido y borrado.
 - **Vista de proveedores** con paginación.
 - **Reportes**: totales por categoría y por proveedor, con gráficas.
+- **Revisión de duplicados**: pestaña que, al pulsar "Revisar duplicados", agrupa los documentos que parecen el mismo egreso (por ejemplo, una factura y su comprobante de pago) y muestra cuánto se estaría contando de más. Permite previsualizar, eliminar o marcar el grupo como "No es duplicado".
 - **Login** con Supabase Auth (sin registro público) y aislamiento de datos por empresa.
 
 ## Arquitectura
@@ -126,6 +127,8 @@ Todos los endpoints, salvo `/health*`, requieren `Authorization: Bearer <access_
 | `GET`, `POST /vendors`; `PATCH /vendors/{id}` | Proveedores |
 | `GET`, `POST /expense-categories`; `PATCH`, `DELETE /expense-categories/{id}` | Categorías de gasto (Transporte, Suministros, Inventario, Servicios Públicos, Nómina, Arriendo, Otros por defecto) |
 | `GET /reports/expense-summary` | Resumen de gastos (ver abajo) |
+| `GET /reports/probable-duplicates` | Grupos de documentos probablemente duplicados (ver abajo). Filtro: `date_window_days` (0-30, por defecto 5) |
+| `POST /reports/probable-duplicates/dismiss` | Marca un grupo (`document_ids`) como "no es duplicado" para que no vuelva a aparecer |
 
 ### Reportes
 
@@ -136,6 +139,18 @@ Todos los endpoints, salvo `/health*`, requieren `Authorization: Bearer <access_
 - `grand_total` y `document_count`.
 
 Los montos salen de la extracción final de Claude; los documentos sin extracción aparecen con `total_amount=null` y no suman a los totales.
+
+### Detección de duplicados
+
+`GET /reports/probable-duplicates` compara los documentos de la empresa que tienen valor (`total_amount > 0`) y los agrupa cuando coinciden en:
+
+- **Valor y moneda**: idénticos al centavo.
+- **Proveedor**: el mismo (por ID o NIT) o uno de nombre similar; se ignoran tildes, mayúsculas y sufijos como S.A.S. o Ltda. Dos proveedores claramente distintos no se agrupan.
+- **Fecha del documento**: a no más de `date_window_days` días entre sí.
+
+Si a un documento le falta el proveedor o la fecha, puede aparecer igual pero con menos confianza; si faltan ambos, no se compara. Cada grupo trae una `confidence` (`alta`, `media`, `baja`), las `reasons` de la coincidencia y `possible_overcount` (el monto que se cuenta de más si todos son el mismo egreso). Tres o más documentos del mismo egreso salen en un solo grupo.
+
+`POST /reports/probable-duplicates/dismiss` guarda cada par del grupo en `duplicate_dismissals`; esos pares dejan de marcarse (y se borran solos si se elimina el documento). Verifica que todos los documentos pertenezcan a la empresa del usuario.
 
 ## Extracción con Claude
 
