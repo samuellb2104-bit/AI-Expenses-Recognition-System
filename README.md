@@ -20,7 +20,7 @@ Render + Vercel.
 - **Subida de documentos**: uno, varios o carpetas completas (arrastrar y soltar). PDFs e imágenes.
 - **Extracción con Claude**: proveedor (`vendor_name`, NIT), fecha, total, impuesto, moneda, líneas de detalle y notas, como JSON estructurado.
 - **Organización**: cada documento se vincula automáticamente a un proveedor y a una categoría de gasto; ambos se pueden corregir a mano.
-- **Tabla de documentos**: filtros por proveedor, categoría, rango de fechas del documento y "información faltante"; paginación; previsualización del archivo; reintento de procesamiento fallido y borrado.
+- **Tabla de documentos**: filtros por proveedor, categoría, rango de fechas del documento y "información faltante"; paginación; previsualización del archivo; reintento de procesamiento fallido y borrado. Los documentos con un valor sospechoso muestran un aviso ⚠ con el motivo y se pueden filtrar con "Solo con alertas de valor".
 - **Vista de proveedores** con paginación.
 - **Reportes**: totales por categoría y por proveedor, con gráficas.
 - **Revisión de duplicados**: pestaña que, al pulsar "Revisar duplicados", agrupa los documentos que parecen el mismo egreso (por ejemplo, una factura y su comprobante de pago) y muestra cuánto se estaría contando de más. Permite previsualizar, eliminar o marcar el grupo como "No es duplicado".
@@ -120,7 +120,7 @@ Todos los endpoints, salvo `/health*`, requieren `Authorization: Bearer <access_
 | `POST /documents/batch-extract` | Envía varios documentos como un Anthropic Message Batch |
 | `POST /documents/{id}/ai-extract` | (Re)ejecuta la extracción con Claude |
 | `POST /documents/{id}/ocr` | Ejecuta OCR local opcional (Tesseract) y luego la extracción |
-| `GET /documents` | Lista paginada. Filtros: `vendor_id`, `expense_category_id`, `document_date_from`, `document_date_to`, `missing_info`, `limit`, `offset` |
+| `GET /documents` | Lista paginada. Filtros: `vendor_id`, `expense_category_id`, `document_date_from`, `document_date_to`, `missing_info`, `amount_alert`, `limit`, `offset`. Cada documento trae `amount_warnings` |
 | `GET /documents/{id}/file` | Descarga/previsualiza el archivo |
 | `PATCH /documents/{id}/classify` | Asigna o corrige `vendor_id` y/o `expense_category_id` |
 | `DELETE /documents/{id}` | Borra el documento, sus filas relacionadas y el archivo |
@@ -155,6 +155,27 @@ Si a un documento le falta el proveedor o la fecha, puede aparecer igual pero co
 ## Extracción con Claude
 
 Claude es el único paso que produce los campos estructurados, por lo que corre en todos los documentos. Con `claude-haiku-4-5` ($1/$5 por 1M tokens) el costo ronda los $0.003–0.004 USD por documento. Si hay errores en documentos difíciles, prueba `claude-sonnet-5-5` u otro modelo más capaz cambiando `ANTHROPIC_MODEL`.
+
+### Formato de los montos
+
+En los documentos colombianos el punto separa los miles (`186.900` son ciento ochenta y seis mil novecientos), pero leído como número en inglés daría 186,9. Para que la lectura no dependa de que el modelo adivine el formato:
+
+- Claude devuelve, además del número, el monto **tal como está impreso** (`total_amount_text`, `tax_amount_text`), y el prompt explica el formato colombiano.
+- `parse_amount_text` (`ai_extraction_service.py`) convierte ese texto con una regla fija: si aparecen punto y coma, el último es el decimal; un separador repetido o seguido de exactamente 3 dígitos es de miles (`186.900` y `186,900` dan 186900); cualquier otro caso es decimal (`186,9`).
+- `resolve_amount` es el único punto que decide el valor: usa el texto impreso y, si falta o no se puede leer, el número de Claude (así siguen funcionando las extracciones anteriores a este cambio). Lo usan el guardado, los reportes y el script de relleno.
+
+### Alertas de valor
+
+`amount_validation_service.py` revisa si el valor extraído es plausible y devuelve avisos en `amount_warnings` (en la tabla de documentos, con el filtro `amount_alert`). Se calculan al listar, a partir de lo guardado: no hay estado ni columna extra, y la alerta desaparece sola si el documento se reprocesa y queda bien. Son pistas para mirar el documento, no pruebas de error:
+
+- Valor menor a $1.000 COP (suele faltar la parte de los miles) o COP con decimales.
+- La suma de las líneas no coincide con el total (con tolerancia de redondeo, con o sin impuesto).
+- Impuesto mayor que el total.
+- Moneda no detectada.
+
+### Corrección masiva de valores mal leídos
+
+`python -m app.db.reprocess_amounts` vuelve a extraer los documentos en COP con total menor a 1.000 o con decimales y actualiza **solo** `total_amount` y `currency` (no toca proveedor, categoría ni fecha, para no pisar correcciones manuales). Conserva lo anterior en un archivo de respaldo (`--backup`), en `processing_logs` (paso `amount_reprocess`) y en la extracción previa, que queda como no final. Opciones: `--dry-run` (no escribe), `--limit N` (muestra aleatoria). Es seguro repetirlo: los documentos ya corregidos dejan de ser candidatos. Cada documento cuesta una llamada a Claude (~$0.004 USD).
 
 ## OCR local (opcional)
 
