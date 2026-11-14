@@ -53,6 +53,13 @@ function App() {
       }
       window.clearTimeout(exitTimer);
       setLoginLeaving(false);
+      if (!newSession) {
+        // Reset only once the session is really gone: doing it on the button click
+        // re-mounts the splash over the still-visible dashboard, which marks it as
+        // seen again and makes the next login skip the animation.
+        resetSplash();
+        setSplashDone(false);
+      }
       applySession(newSession);
     });
 
@@ -87,11 +94,7 @@ function App() {
             <ThemeToggle />
             <button
               className="logout-button"
-              onClick={() => {
-                resetSplash();
-                setSplashDone(false);
-                supabase.auth.signOut();
-              }}
+              onClick={() => supabase.auth.signOut()}
             >
               Cerrar sesion
             </button>
