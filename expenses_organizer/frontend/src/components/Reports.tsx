@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Loader } from "./Brand";
 import { ApiError, getExpenseSummary } from "../api/client";
 import type { ExpenseSummaryResponse } from "../api/types";
 
@@ -29,7 +30,7 @@ export function Reports({ refreshSignal }: ReportsProps) {
   }, [loadAll, refreshSignal]);
 
   if (loading && !summary) {
-    return <p>Cargando reportes...</p>;
+    return <Loader label="Cargando reportes..." />;
   }
 
   if (error) {

@@ -1,8 +1,10 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { isSupabaseConfigured, supabase } from "../lib/supabaseClient";
+import { BrandLogo } from "./Brand";
+import { ThemeToggle } from "./ThemeToggle";
 
-export function Login() {
+export function Login({ leaving = false }: { leaving?: boolean }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -24,8 +26,14 @@ export function Login() {
 
   return (
     <div className="login-screen">
-      <form className="login-card" onSubmit={handleSubmit}>
-        <h1>Organizador de Egresos</h1>
+      <div className="login-theme">
+        <ThemeToggle />
+      </div>
+      <form className={leaving ? "login-card leaving" : "login-card"} onSubmit={handleSubmit}>
+        <h1 className="brand-heading">
+          <BrandLogo height={40} />
+          <span className="visually-hidden">Organizador de Egresos</span>
+        </h1>
         <p className="subtitle">Inicia sesion para continuar.</p>
 
         {!isSupabaseConfigured && (
@@ -58,7 +66,7 @@ export function Login() {
 
         {error && <p className="error-text">{error}</p>}
 
-        <button type="submit" disabled={submitting || !isSupabaseConfigured}>
+        <button type="submit" disabled={submitting || leaving || !isSupabaseConfigured}>
           {submitting ? "Ingresando..." : "Ingresar"}
         </button>
       </form>

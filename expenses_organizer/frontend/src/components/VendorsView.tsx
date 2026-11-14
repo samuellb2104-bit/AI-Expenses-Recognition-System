@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Loader } from "./Brand";
 import { ApiError, listVendors } from "../api/client";
 import type { VendorRead } from "../api/types";
 
@@ -29,7 +30,7 @@ export function VendorsView({ refreshSignal, onSelectVendor }: VendorsViewProps)
   }, [loadVendors, refreshSignal]);
 
   if (loading && vendors.length === 0) {
-    return <p>Cargando proveedores...</p>;
+    return <Loader label="Cargando proveedores..." />;
   }
 
   if (error) {
@@ -41,7 +42,8 @@ export function VendorsView({ refreshSignal, onSelectVendor }: VendorsViewProps)
   }
 
   return (
-    <table className="vendors-table">
+    <div className="table-scroll">
+<table className="vendors-table">
       <thead>
         <tr>
           <th>Proveedor</th>
@@ -57,5 +59,6 @@ export function VendorsView({ refreshSignal, onSelectVendor }: VendorsViewProps)
         ))}
       </tbody>
     </table>
+</div>
   );
 }

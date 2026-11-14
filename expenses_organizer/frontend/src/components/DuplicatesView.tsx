@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Loader } from "./Brand";
 import {
   ApiError,
   deleteDocument,
@@ -133,6 +134,8 @@ export function DuplicatesView({ onChanged }: DuplicatesViewProps) {
 
       {error && <p className="error-text">{error}</p>}
 
+      {scanning && <Loader label="Buscando egresos duplicados..." />}
+
       {result && result.groups.length === 0 && (
         <p>
           No se encontraron posibles duplicados entre {result.scanned_document_count} documentos con valor.
@@ -165,7 +168,8 @@ export function DuplicatesView({ onChanged }: DuplicatesViewProps) {
               </div>
               <p className="duplicate-reasons">{group.reasons.join(" · ")}</p>
 
-              <table className="documents-table">
+              <div className="table-scroll">
+<table className="documents-table">
                 <thead>
                   <tr>
                     <th>Archivo</th>
@@ -203,6 +207,7 @@ export function DuplicatesView({ onChanged }: DuplicatesViewProps) {
                   ))}
                 </tbody>
               </table>
+</div>
             </div>
           ))}
         </>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Loader } from "./Brand";
 import {
   ApiError,
   classifyDocument,
@@ -215,7 +216,7 @@ export function DocumentsTable({ refreshSignal, presetVendorId }: DocumentsTable
   }
 
   if (loading && documents.length === 0) {
-    return <p>Cargando documentos...</p>;
+    return <Loader label="Cargando documentos..." />;
   }
 
   if (error) {
@@ -303,7 +304,8 @@ export function DocumentsTable({ refreshSignal, presetVendorId }: DocumentsTable
       {documents.length === 0 ? (
         <p>No hay documentos que coincidan con los filtros.</p>
       ) : (
-        <table className="documents-table">
+        <div className="table-scroll">
+<table className="documents-table">
           <thead>
             <tr>
               <th>Archivo</th>
@@ -334,7 +336,7 @@ export function DocumentsTable({ refreshSignal, presetVendorId }: DocumentsTable
                   </span>
                 </td>
                 <td>{doc.confidence_score != null ? `${doc.confidence_score.toFixed(0)}%` : "-"}</td>
-                <td>
+                <td className="amount-cell">
                   {formatAmount(doc.total_amount, doc.currency)}
                   {doc.amount_warnings.length > 0 && (
                     <span
@@ -396,6 +398,7 @@ export function DocumentsTable({ refreshSignal, presetVendorId }: DocumentsTable
             ))}
           </tbody>
         </table>
+</div>
       )}
 
       {total > 0 && (

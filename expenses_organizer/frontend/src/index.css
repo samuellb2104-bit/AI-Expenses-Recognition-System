@@ -1,34 +1,54 @@
+/* CostOad brand tokens -- see src/assets/brand/costoad-color-palette.png.
+   The theme is set by `data-theme` on <html> (src/lib/theme.ts). */
 :root {
-  --text: #3f3b45;
-  --text-h: #08060d;
-  --bg: #fdfcfb;
-  --surface: #ffffff;
-  --border: #e5e4e7;
-  --accent: #7c3aed;
-  --accent-hover: #6d28d9;
+  --text: #4a5d7a; /* Secondary Ink */
+  --text-h: #061c40; /* Primary Ink (navy) */
+  --bg: #ffffff; /* Canvas */
+  --surface: #f6f8fc; /* Surface */
+  --border: #e2e8f2;
+  --accent: #036efe; /* Brand Blue: CTAs */
+  --accent-hover: #025ce0; /* Accent Hover */
+  --link: #036efe; /* text/links/focus rings */
+  --on-accent: #ffffff;
   --success: #16a34a;
   --warning: #d97706;
   --danger: #dc2626;
-  --sans: system-ui, "Segoe UI", Roboto, sans-serif;
-  color-scheme: light dark;
+  /* Readable-on-tint variants for badges */
+  --success-text: #15803d;
+  --warning-text: #92590a;
+  --danger-text: #b91c1c;
+  --shadow-sm: 0 1px 2px rgba(6, 28, 64, 0.06);
+  --shadow-md: 0 1px 2px rgba(6, 28, 64, 0.05), 0 8px 24px rgba(6, 28, 64, 0.06);
+  --shadow-lg: 0 24px 64px rgba(6, 28, 64, 0.22);
+  --glow: rgba(3, 110, 254, 0.08);
+  --radius: 10px;
+  --sans: "Plus Jakarta Sans", system-ui, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light;
   color: var(--text);
   background: var(--bg);
-  font: 16px/1.5 var(--sans);
+  font: 15px/1.55 var(--sans);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #d4d2d8;
-    --text-h: #f3f4f6;
-    --bg: #15131a;
-    --surface: #1e1c24;
-    --border: #322f3a;
-    --accent: #a78bfa;
-    --accent-hover: #c4b5fd;
-    --success: #4ade80;
-    --warning: #fbbf24;
-    --danger: #f87171;
-  }
+:root[data-theme="dark"] {
+  --text: #9eb0ce;
+  --text-h: #f4f7fc;
+  --bg: #040e21;
+  --surface: #0a1a38;
+  --border: #1b3058;
+  --accent: #036efe;
+  --accent-hover: #3b8eff; /* Interactive Blue */
+  --link: #3b8eff;
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --success-text: #4ade80;
+  --warning-text: #fbbf24;
+  --danger-text: #f87171;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.28);
+  --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.6);
+  --glow: rgba(3, 110, 254, 0.14);
+  color-scheme: dark;
 }
 
 * {
@@ -37,34 +57,95 @@
 
 body {
   margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(900px 340px at 50% -140px, var(--glow), transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
 }
 
 h1,
-h2 {
+h2,
+h3 {
   color: var(--text-h);
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  font-size: 20px;
+  margin: 0 0 16px;
+}
+
+h3 {
+  font-size: 16px;
+  margin: 24px 0 12px;
 }
 
 button {
   font: inherit;
+  font-weight: 600;
+  font-size: 14px;
   cursor: pointer;
   border: 1px solid var(--accent);
   background: var(--accent);
-  color: white;
-  border-radius: 6px;
+  color: var(--on-accent);
+  border-radius: 8px;
   padding: 8px 14px;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.05s ease;
 }
 
-button:hover {
+button:where(:hover:not(:disabled)) {
   background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+button:where(:active:not(:disabled)) {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 input,
 select {
   font: inherit;
-  padding: 6px 10px;
-  border-radius: 6px;
+  font-size: 14px;
+  padding: 7px 11px;
+  border-radius: 8px;
   border: 1px solid var(--border);
-  background: var(--surface);
+  background: var(--bg);
+  color: var(--text-h);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+input::placeholder {
   color: var(--text);
+  opacity: 0.7;
+}
+
+input:focus,
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  vertical-align: -2px;
 }
